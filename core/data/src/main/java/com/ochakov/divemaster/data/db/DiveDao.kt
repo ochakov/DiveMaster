@@ -18,14 +18,22 @@ interface DiveDao {
     @Insert
     suspend fun insertSamples(samples: List<SampleEntity>)
 
-    @Query("SELECT * FROM dives ORDER BY startEpochMs DESC LIMIT 1")
+    @Query("SELECT * FROM dives WHERE endEpochMs > 0 ORDER BY startEpochMs DESC LIMIT 1")
     fun observeLatest(): Flow<DiveEntity?>
 
-    @Query("SELECT * FROM dives ORDER BY startEpochMs DESC")
+    @Query("SELECT * FROM dives WHERE endEpochMs > 0 ORDER BY startEpochMs DESC")
     fun observeAll(): Flow<List<DiveEntity>>
+
+    /** Dives whose end was never written — the app died mid-dive. */
+    @Query("SELECT * FROM dives WHERE endEpochMs = 0")
+    suspend fun openDives(): List<DiveEntity>
 
     @Query("SELECT * FROM samples WHERE diveId = :diveId ORDER BY tOffsetSec")
     suspend fun samplesFor(diveId: Long): List<SampleEntity>
+
+    /** Drops the surface-interval tail recorded while waiting out the end-of-dive hold. */
+    @Query("DELETE FROM samples WHERE diveId = :diveId AND tOffsetSec > :offsetSec")
+    suspend fun trimSamplesAfter(diveId: Long, offsetSec: Int)
 
     @Query("DELETE FROM dives WHERE id = :diveId")
     suspend fun deleteDive(diveId: Long)

@@ -23,16 +23,17 @@ Dive detection: start at depth ≥ 1.2 m held 3 s (clock backdated to submersion
 ## Modules
 
 - `:core:deco` — pure Kotlin JVM, zero Android deps. All pressures **bar absolute**, durations **seconds**, depths **meters**. `Buhlmann` (tissue loading, NDL, ceiling), `ZhL16c` (coefficients), `Oxygen` (ppO₂/MOD/CNS), `DepthConverter`, `Gas`, `GradientFactors`. Fully unit-tested; golden NDL windows in `NdlTest` are deliberately loose until Phase 2 pins exact reference values.
-- `:core:data` — Room database (`dives`, `samples`, single-row `tissue_state` for repetitive-dive correctness across restarts) + `SettingsRepository` (DataStore). Depends on `:core:deco`.
-- `:app` — Wear OS app. Screens: surface (clock + last dive), probe (Phase 0 hardware diagnostic), dive (static preview until Phase 4), settings (read-only until Phase 5), log.
+- `:core:engine` — pure Kotlin JVM dive engine, driven entirely by sample timestamps (no wall clock → fully testable, simulator-identical). `DiveEngine` (surface-EMA reference frozen at dive start, backdated start/end state machine, merge/discard rules, tissue+CNS integration per sample, gas=air above 0.5 m), `SensorPipeline` (1 s bucket median), `SimulatorProfile` (20 m / 5 min dev dive), `DiveStats` (crash-recovery stats). Single-threaded by contract — feed from one coroutine.
+- `:core:data` — Room database (`dives`, `samples`, single-row `tissue_state` for repetitive-dive correctness across restarts) + `SettingsRepository` (DataStore). Open dives have `endEpochMs = 0` and are hidden from queries until finalized. Depends on `:core:deco`.
+- `:app` — Wear OS app. `service/DiveService`: foreground service (specialUse FGS type) owning sensors → pipeline → engine → `DiveSessionRecorder` (Room writes, 15 s tissue snapshots, orphan-dive finalization on start); wake lock while diving; runs while app visible, stays alive through a dive, stops on surface when app closed; simulator at 4× time scale (ACTION_START_SIM/STOP_SIM). Screens: surface (clock + last dive + sim controls), probe, dive (live when a dive is active, else preview), settings (read-only; **5 taps on the Simulator row toggle the hidden simulator**), log.
 
 ## Phase status
 
 - [x] Phase 0 — sensor probe screen (hardware go/no-go: pressure sensor range, temp sensor availability)
-- [x] Phase 1 — scaffold (this state)
+- [x] Phase 1 — scaffold
 - [ ] Phase 2 — pin deco golden values against a reference implementation
-- [ ] Phase 3 — dive engine: foreground service, sensor pipeline (median filter → 1 Hz), state machine, crash recovery, simulator pressure source
-- [ ] Phase 4 — live dive + surface UI (auto-switch on submersion)
+- [x] Phase 3 — dive engine: foreground service, sensor pipeline (median filter → 1 Hz), state machine, crash recovery, simulator pressure source, live dive-screen values
+- [ ] Phase 4 — live dive + surface UI polish (auto-switch on submersion, touch lock, always-on)
 - [ ] Phase 5 — editable settings
 - [ ] Phase 6 — alert engine (distinct vibration patterns primary; beep secondary)
 - [ ] Phase 7 — dive log detail

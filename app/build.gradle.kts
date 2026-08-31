@@ -39,6 +39,7 @@ android {
 dependencies {
     implementation(project(":core:deco"))
     implementation(project(":core:data"))
+    implementation(project(":core:engine"))
 
     implementation(libs.androidx.core.ktx)
     implementation(platform(libs.compose.bom))

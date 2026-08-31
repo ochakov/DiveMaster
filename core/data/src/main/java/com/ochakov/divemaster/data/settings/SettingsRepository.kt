@@ -62,15 +62,27 @@ class SettingsRepository(context: Context) {
         )
     }
 
-    suspend fun setGasO2Fraction(o2Fraction: Double) = dataStore.edit { it[Keys.O2] = o2Fraction }
+    suspend fun setGasO2Fraction(o2Fraction: Double) {
+        dataStore.edit { it[Keys.O2] = o2Fraction }
+    }
 
-    suspend fun setWaterType(waterType: WaterType) = dataStore.edit { it[Keys.WATER] = waterType.name }
+    suspend fun setWaterType(waterType: WaterType) {
+        dataStore.edit { it[Keys.WATER] = waterType.name }
+    }
 
-    suspend fun setMetricUnits(metric: Boolean) = dataStore.edit { it[Keys.METRIC] = metric }
+    suspend fun setMetricUnits(metric: Boolean) {
+        dataStore.edit { it[Keys.METRIC] = metric }
+    }
 
-    suspend fun setGradientFactors(gf: GradientFactors) = dataStore.edit {
-        it[Keys.GF_LOW] = gf.low
-        it[Keys.GF_HIGH] = gf.high
+    suspend fun setGradientFactors(gf: GradientFactors) {
+        dataStore.edit {
+            it[Keys.GF_LOW] = gf.low
+            it[Keys.GF_HIGH] = gf.high
+        }
+    }
+
+    suspend fun setSimulatorEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.SIMULATOR] = enabled }
     }
 
     // Remaining setters land together with the editable settings screen (Phase 5).

@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -28,6 +29,10 @@ import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
 import com.ochakov.divemaster.data.db.DiveMasterDatabase
+import com.ochakov.divemaster.data.settings.DiveSettings
+import com.ochakov.divemaster.data.settings.SettingsRepository
+import com.ochakov.divemaster.engine.DivePhase
+import com.ochakov.divemaster.service.DiveService
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDateTime
@@ -47,9 +52,16 @@ fun SurfaceScreen(
     onOpenLog: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenProbe: () -> Unit,
-    onOpenDivePreview: () -> Unit,
+    onOpenDive: () -> Unit,
     viewModel: SurfaceViewModel = viewModel(),
 ) {
+    val context = LocalContext.current
+    val settingsRepository = remember { SettingsRepository(context) }
+    val settings by settingsRepository.settings.collectAsState(initial = DiveSettings())
+    val engineState by DiveService.displayState.collectAsState()
+    val simRunning by DiveService.simulatorRunning.collectAsState()
+    val diving = engineState?.phase == DivePhase.DIVING
+
     val lastDive by viewModel.lastDive.collectAsState(initial = null)
     var now by remember { mutableStateOf(LocalDateTime.now()) }
     LaunchedEffect(Unit) {
@@ -78,6 +90,16 @@ fun SurfaceScreen(
                     style = MaterialTheme.typography.caption1,
                     color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
                 )
+            }
+            if (diving) {
+                item {
+                    Chip(
+                        label = { Text(if (simRunning) "Dive in progress (SIM)" else "Dive in progress") },
+                        onClick = onOpenDive,
+                        colors = ChipDefaults.primaryChipColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
             item { Spacer(Modifier.height(6.dp)) }
             item {
@@ -120,6 +142,29 @@ fun SurfaceScreen(
                 }
             }
             item { Spacer(Modifier.height(6.dp)) }
+            if (settings.simulatorEnabled && !simRunning) {
+                item {
+                    Chip(
+                        label = { Text("Start simulated dive") },
+                        onClick = {
+                            DiveService.start(context, DiveService.ACTION_START_SIM)
+                            onOpenDive()
+                        },
+                        colors = ChipDefaults.secondaryChipColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            if (simRunning) {
+                item {
+                    Chip(
+                        label = { Text("Stop simulation") },
+                        onClick = { DiveService.start(context, DiveService.ACTION_STOP_SIM) },
+                        colors = ChipDefaults.secondaryChipColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
             item {
                 Chip(
                     label = { Text("Dive log") },
@@ -147,7 +192,7 @@ fun SurfaceScreen(
             item {
                 CompactChip(
                     label = { Text("Dive view preview") },
-                    onClick = onOpenDivePreview,
+                    onClick = onOpenDive,
                     colors = ChipDefaults.childChipColors(),
                 )
             }

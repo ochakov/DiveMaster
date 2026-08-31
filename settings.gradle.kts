@@ -19,3 +19,4 @@ rootProject.name = "DiveMaster"
 include(":app")
 include(":core:deco")
 include(":core:data")
+include(":core:engine")
