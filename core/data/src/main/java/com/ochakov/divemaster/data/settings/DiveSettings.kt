@@ -16,6 +16,8 @@ data class DiveSettings(
     val ndlAlertEnabled: Boolean = true,
     val ndlAlertMinutes: Int = 5,
     val safetyStopMinutes: Int = 3,
+    val safetyStopMinDepthM: Double = 4.0,
+    val safetyStopMaxDepthM: Double = 6.0,
     val maxPpO2Bar: Double = 1.4,
     val beepEnabled: Boolean = true,
     val vibrateEnabled: Boolean = true,

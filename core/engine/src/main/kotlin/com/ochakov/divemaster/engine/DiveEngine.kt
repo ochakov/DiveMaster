@@ -5,6 +5,7 @@ import com.ochakov.divemaster.deco.DepthConverter
 import com.ochakov.divemaster.deco.Gas
 import com.ochakov.divemaster.deco.Oxygen
 import com.ochakov.divemaster.deco.TissueState
+import kotlin.math.ceil
 import kotlin.math.pow
 
 /**
@@ -55,6 +56,10 @@ class DiveEngine(
     private var depthTimeDt = 0.0
     private var minTempC: Double? = null
     private var shallowSinceMs: Long? = null
+
+    // Safety stop.
+    private var stopArmed = false
+    private var stopRemainingSec = config.safetyStopSeconds.toDouble()
 
     // Vertical-rate window.
     private data class DepthAt(val tsMs: Long, val depthM: Double)
@@ -127,8 +132,20 @@ class DiveEngine(
             cnsFraction = cnsFraction,
             gasO2Fraction = config.gas.o2Fraction,
             surfacePressureBar = surfaceBar,
+            safetyStop = safetyStopState(depth),
+            safetyStopRemainingSec = ceil(stopRemainingSec).toInt(),
+            safetyStopMinDepthM = config.safetyStopMinDepthM,
+            safetyStopMaxDepthM = config.safetyStopMaxDepthM,
         )
         return events
+    }
+
+    private fun safetyStopState(depth: Double): SafetyStopState = when {
+        phase != DivePhase.DIVING || !stopArmed -> SafetyStopState.NONE
+        stopRemainingSec <= 0.0 -> SafetyStopState.DONE
+        depth in config.safetyStopMinDepthM..config.safetyStopMaxDepthM -> SafetyStopState.ACTIVE
+        stopRemainingSec < config.safetyStopSeconds.toDouble() -> SafetyStopState.PAUSED
+        else -> SafetyStopState.PENDING
     }
 
     /** Force-end the current dive (simulator stopped, service shutting down). */
@@ -137,7 +154,7 @@ class DiveEngine(
         val events = mutableListOf<EngineEvent>()
         if (shallowSinceMs == null) shallowSinceMs = lastTsMs
         endDive(events)
-        displayState = displayState.copy(phase = phase, durationSec = 0)
+        displayState = displayState.copy(phase = phase, durationSec = 0, safetyStop = SafetyStopState.NONE)
         return events
     }
 
@@ -168,6 +185,8 @@ class DiveEngine(
         depthTimeDt = 0.0
         minTempC = null
         shallowSinceMs = null
+        stopArmed = false
+        stopRemainingSec = config.safetyStopSeconds.toDouble()
         events += EngineEvent.DiveStarted(diveStartMs, frozenSurfaceBar)
         var prevTs = diveStartMs
         for (s in pending) {
@@ -191,6 +210,12 @@ class DiveEngine(
         events: MutableList<EngineEvent>,
     ) {
         accumulate(depth, tempC, dtSec)
+        if (!stopArmed && maxDepthM >= config.safetyStopRequiredBelowM) stopArmed = true
+        if (stopArmed && stopRemainingSec > 0.0 &&
+            depth >= config.safetyStopMinDepthM && depth <= config.safetyStopMaxDepthM
+        ) {
+            stopRemainingSec = (stopRemainingSec - dtSec).coerceAtLeast(0.0)
+        }
         events += EngineEvent.SampleRecorded(
             ((ts - diveStartMs) / 1000).toInt(),
             depth,

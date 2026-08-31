@@ -24,6 +24,13 @@ data class DiveEngineConfig(
     val endHoldSec: Int = 60,
     /** Shorter dives are discarded. */
     val minDiveDurationSec: Int = 60,
+    /** Safety-stop countdown length. */
+    val safetyStopSeconds: Int = 180,
+    /** Safety-stop depth window (countdown runs only inside it). */
+    val safetyStopMinDepthM: Double = 4.0,
+    val safetyStopMaxDepthM: Double = 6.0,
+    /** The stop arms once the dive has been at least this deep. */
+    val safetyStopRequiredBelowM: Double = 10.0,
     /** Depth at which the diver counts as submerged (dive clock backdates to here). */
     val submersionEpsilonM: Double = 0.3,
     /** Below this depth the diver is assumed breathing surface air, not the configured gas. */

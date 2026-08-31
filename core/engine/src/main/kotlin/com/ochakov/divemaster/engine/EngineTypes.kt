@@ -11,6 +11,28 @@ data class PressureSample(
 
 enum class DivePhase { SURFACE, DIVING }
 
+/**
+ * Safety-stop lifecycle. Armed once the dive passes the required depth;
+ * the countdown runs only inside the depth window, pausing (not resetting)
+ * outside it, per Ev's spec.
+ */
+enum class SafetyStopState {
+    /** Not armed (dive never went deep enough) or no dive active. */
+    NONE,
+
+    /** Armed, countdown untouched — the diver hasn't reached the window yet. */
+    PENDING,
+
+    /** In the window, counting down. */
+    ACTIVE,
+
+    /** Countdown started but the diver is outside the window; time is held. */
+    PAUSED,
+
+    /** Countdown reached zero. */
+    DONE,
+}
+
 /** Everything the UI needs, refreshed once per sample. */
 data class DiveDisplayState(
     val phase: DivePhase = DivePhase.SURFACE,
@@ -27,6 +49,10 @@ data class DiveDisplayState(
     val gasO2Fraction: Double = 0.21,
     val surfacePressureBar: Double = DepthConverter.STANDARD_ATMOSPHERE_BAR,
     val simulated: Boolean = false,
+    val safetyStop: SafetyStopState = SafetyStopState.NONE,
+    val safetyStopRemainingSec: Int = 0,
+    val safetyStopMinDepthM: Double = 4.0,
+    val safetyStopMaxDepthM: Double = 6.0,
 )
 
 /** Storage-relevant things that happened while processing one sample. */

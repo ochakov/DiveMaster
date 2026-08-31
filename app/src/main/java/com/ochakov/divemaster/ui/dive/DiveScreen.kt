@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.Text
 import com.ochakov.divemaster.engine.DiveDisplayState
 import com.ochakov.divemaster.engine.DivePhase
+import com.ochakov.divemaster.engine.SafetyStopState
 import com.ochakov.divemaster.service.DiveService
 import com.ochakov.divemaster.ui.theme.DiveAmber
 import com.ochakov.divemaster.ui.theme.DiveCyan
@@ -121,6 +123,7 @@ private fun DiveContent(state: DiveDisplayState) {
                 LabeledValue("NDL", ndlText, valueColor = ndlColor)
                 LabeledValue("TIME", "%d:%02d".format(state.durationSec / 60, state.durationSec % 60))
             }
+            SafetyStopPanel(state)
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(gasLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DiveGreen)
@@ -129,6 +132,75 @@ private fun DiveContent(state: DiveDisplayState) {
             }
         }
         RateBar(state.verticalRateMPerMin, Modifier.align(Alignment.CenterEnd).padding(end = 10.dp))
+    }
+}
+
+/**
+ * Safety-stop countdown. Shown once the stop is armed: quietly while still
+ * deep, as a bold green countdown inside the 4–6 m window, amber with a
+ * direction hint while the countdown is paused outside the window, and a
+ * small checkmark once complete.
+ */
+@Composable
+private fun SafetyStopPanel(state: DiveDisplayState) {
+    val remaining = state.safetyStopRemainingSec
+    val time = "%d:%02d".format(remaining / 60, remaining % 60)
+    val windowText = "%.0f–%.0f m".format(state.safetyStopMinDepthM, state.safetyStopMaxDepthM)
+    when (state.safetyStop) {
+        SafetyStopState.NONE -> Unit
+
+        SafetyStopState.PENDING -> {
+            // Only bother the diver once they're ascending toward the window.
+            if (state.depthM < state.safetyStopMaxDepthM + 3.0) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "STOP $time at $windowText",
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.7f),
+                )
+            }
+        }
+
+        SafetyStopState.ACTIVE -> {
+            Spacer(Modifier.height(3.dp))
+            Text(
+                "STOP $time",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black,
+                modifier = Modifier
+                    .background(DiveGreen, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 2.dp),
+            )
+        }
+
+        SafetyStopState.PAUSED -> {
+            Spacer(Modifier.height(3.dp))
+            Text(
+                "STOP $time",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black,
+                modifier = Modifier
+                    .background(DiveAmber, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 2.dp),
+            )
+            Text(
+                if (state.depthM > state.safetyStopMaxDepthM) "PAUSED · ascend to $windowText" else "PAUSED · descend to $windowText",
+                fontSize = 10.sp,
+                color = DiveAmber,
+            )
+        }
+
+        SafetyStopState.DONE -> {
+            Spacer(Modifier.height(3.dp))
+            Text(
+                "STOP ✓",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = DiveGreen,
+            )
+        }
     }
 }
 

@@ -29,6 +29,8 @@ class SettingsRepository(context: Context) {
         val NDL_ALERT = booleanPreferencesKey("ndl_alert_enabled")
         val NDL_MIN = intPreferencesKey("ndl_alert_minutes")
         val SAFETY_STOP = intPreferencesKey("safety_stop_minutes")
+        val SAFETY_STOP_MIN_DEPTH = doublePreferencesKey("safety_stop_min_depth_m")
+        val SAFETY_STOP_MAX_DEPTH = doublePreferencesKey("safety_stop_max_depth_m")
         val MAX_PPO2 = doublePreferencesKey("max_ppo2_bar")
         val BEEP = booleanPreferencesKey("beep_enabled")
         val VIBRATE = booleanPreferencesKey("vibrate_enabled")
@@ -55,6 +57,8 @@ class SettingsRepository(context: Context) {
             ndlAlertEnabled = p[Keys.NDL_ALERT] ?: d.ndlAlertEnabled,
             ndlAlertMinutes = p[Keys.NDL_MIN] ?: d.ndlAlertMinutes,
             safetyStopMinutes = p[Keys.SAFETY_STOP] ?: d.safetyStopMinutes,
+            safetyStopMinDepthM = p[Keys.SAFETY_STOP_MIN_DEPTH] ?: d.safetyStopMinDepthM,
+            safetyStopMaxDepthM = p[Keys.SAFETY_STOP_MAX_DEPTH] ?: d.safetyStopMaxDepthM,
             maxPpO2Bar = p[Keys.MAX_PPO2] ?: d.maxPpO2Bar,
             beepEnabled = p[Keys.BEEP] ?: d.beepEnabled,
             vibrateEnabled = p[Keys.VIBRATE] ?: d.vibrateEnabled,

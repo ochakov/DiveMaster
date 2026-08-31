@@ -213,6 +213,66 @@ class DiveEngineTest {
     }
 
     @Test
+    fun `safety stop arms only after passing the required depth`() {
+        val h = Harness()
+        h.feed(0.0, 5)
+        h.feed(8.0, 120)  // never past 10 m
+        h.feed(5.0, 60)   // in the stop window, but nothing armed
+        assertEquals(SafetyStopState.NONE, h.engine.displayState.safetyStop)
+    }
+
+    @Test
+    fun `safety stop is pending at depth then counts down in the window to done`() {
+        val h = Harness()
+        h.feed(0.0, 5)
+        h.feed(20.0, 120)
+        assertEquals(SafetyStopState.PENDING, h.engine.displayState.safetyStop)
+        assertEquals(180, h.engine.displayState.safetyStopRemainingSec)
+
+        h.feed(5.0, 30)
+        assertEquals(SafetyStopState.ACTIVE, h.engine.displayState.safetyStop)
+        assertEquals(150, h.engine.displayState.safetyStopRemainingSec)
+
+        h.feed(5.0, 155)
+        assertEquals(SafetyStopState.DONE, h.engine.displayState.safetyStop)
+        assertEquals(0, h.engine.displayState.safetyStopRemainingSec)
+    }
+
+    @Test
+    fun `safety stop pauses outside the window in both directions and resumes`() {
+        val h = Harness()
+        h.feed(0.0, 5)
+        h.feed(20.0, 120)
+        h.feed(5.0, 60) // 120 s remaining
+
+        h.feed(8.0, 40) // drifted below the window
+        assertEquals(SafetyStopState.PAUSED, h.engine.displayState.safetyStop)
+        assertEquals(120, h.engine.displayState.safetyStopRemainingSec)
+
+        h.feed(3.0, 20) // drifted above the window
+        assertEquals(SafetyStopState.PAUSED, h.engine.displayState.safetyStop)
+        assertEquals(120, h.engine.displayState.safetyStopRemainingSec)
+
+        h.feed(5.0, 125) // back in the window: resumes and finishes
+        assertEquals(SafetyStopState.DONE, h.engine.displayState.safetyStop)
+    }
+
+    @Test
+    fun `safety stop resets for the next dive`() {
+        val h = Harness()
+        h.feed(0.0, 5)
+        h.feed(20.0, 120)
+        h.feed(5.0, 200) // complete the stop
+        assertEquals(SafetyStopState.DONE, h.engine.displayState.safetyStop)
+        h.feed(0.0, 70)  // dive ends
+        assertEquals(SafetyStopState.NONE, h.engine.displayState.safetyStop)
+
+        h.feed(15.0, 10) // next dive, freshly armed
+        assertEquals(SafetyStopState.PENDING, h.engine.displayState.safetyStop)
+        assertEquals(180, h.engine.displayState.safetyStopRemainingSec)
+    }
+
+    @Test
     fun `no NDL recorded while unlimited in very shallow water`() {
         val h = Harness()
         h.feed(0.0, 5)

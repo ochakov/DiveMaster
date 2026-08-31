@@ -18,7 +18,9 @@ A standalone Wear OS scuba dive computer (single gas: air/nitrox). Target device
 | Units | Metric default with imperial toggle |
 | Dev | Hidden simulator mode feeding synthetic pressure profiles |
 
-Dive detection: start at depth ≥ 1.2 m held 3 s (clock backdated to submersion); end after < 0.8 m held 60 s; re-descend within 60 s continues the same dive; dives < 60 s discarded. Alert defaults: ascent > 10 m/min, descent > 20 m/min, low NDL < 5 min, safety stop 3 min at 5 m once past 10 m.
+Dive detection: start at depth ≥ 1.2 m held 3 s (clock backdated to submersion); end after < 0.8 m held 60 s; re-descend within 60 s continues the same dive; dives < 60 s discarded. Alert defaults: ascent > 10 m/min, descent > 20 m/min, low NDL < 5 min.
+
+Safety stop (Ev's spec, 2026-08-31): arms once the dive passes 10 m; countdown (default 3 min) runs only inside a configurable depth window (default 4–6 m); leaving the window in either direction **pauses** the countdown (no reset, even on deep re-descent — deliberate, differs from computers that restart the stop); resumes on re-entry. Engine states NONE/PENDING/ACTIVE/PAUSED/DONE; dive screen shows a green countdown pill when active, amber + direction hint when paused, checkmark when done. Stop-complete/missed vibration belongs to Phase 6.
 
 ## Modules
 

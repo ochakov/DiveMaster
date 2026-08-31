@@ -53,7 +53,10 @@ fun SettingsScreen() {
             },
         )
         add("Units" to if (settings.metricUnits) "Metric (m, °C)" else "Imperial (ft, °F)")
-        add("Safety stop" to "${settings.safetyStopMinutes} min at 5 m")
+        add(
+            "Safety stop" to "%d min at %.0f–%.0f m"
+                .format(settings.safetyStopMinutes, settings.safetyStopMinDepthM, settings.safetyStopMaxDepthM),
+        )
         add("Ascent alert" to "> %.0f m/min".format(settings.ascentAlertMPerMin))
         add("Descent alert" to "> %.0f m/min".format(settings.descentAlertMPerMin))
         add("Low-NDL alert" to "< ${settings.ndlAlertMinutes} min")

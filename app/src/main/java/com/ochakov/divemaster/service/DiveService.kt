@@ -105,7 +105,14 @@ class DiveService : Service() {
             val restored = rec.restore()
             recorder = rec
             val eng = DiveEngine(
-                DiveEngineConfig(settings.waterType, settings.gas, settings.gradientFactors),
+                DiveEngineConfig(
+                    settings.waterType,
+                    settings.gas,
+                    settings.gradientFactors,
+                    safetyStopSeconds = settings.safetyStopMinutes * 60,
+                    safetyStopMinDepthM = settings.safetyStopMinDepthM,
+                    safetyStopMaxDepthM = settings.safetyStopMaxDepthM,
+                ),
                 restored.tissue,
                 restored.cnsFraction,
             )
