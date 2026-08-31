@@ -50,8 +50,8 @@ Toolchain: JDK 17 on PATH, SDK at `%LOCALAPPDATA%\Android\Sdk`, Gradle 8.10.2 vi
 
 ## Known hardware risks (why the probe screen exists)
 
-1. Consumer barometer chips often spec only ~1250 hPa → saturation near 2.5 m of water. The probe screen shows the spec range verdict and the max pressure seen while dunked. If the Ultra 2 saturates, the depth concept needs a hardware rethink — check this before building further phases.
-2. Most Wear watches expose no `TYPE_AMBIENT_TEMPERATURE`; the probe lists vendor `*temp*` sensors as fallback candidates. If none exist, hide the temperature tile.
+1. Consumer barometer chips often spec only ~1250 hPa → saturation near 2.5 m of water. **Ultra 2 probe findings (2026-08-31):** the HAL declares `maximumRange` ≈ 1013 hPa — a nominal value, not a hard limit — and live readings exceeded it underwater (+~20 hPa in a water bottle → correct 0.2 m). The probe verdict treats a low declared spec as "ceiling unknown" and turns green once readings pass the spec. The **true saturation point is still unknown**: verify with staged depths (watch lowered on a line / pool steps, reading "max seen") before trusting the depth channel, and field-validate against a certified computer.
+2. Most Wear watches expose no `TYPE_AMBIENT_TEMPERATURE`. **Ultra 2 has none, but its skin-temperature vendor sensor works via SensorManager** (name-matched `*temp*`/`*thermo*`). Decision (Ev, 2026-08-31): temperature pipeline uses every available source — ambient preferred, skin/vendor fallback, labeled as body-biased and slow to track water.
 3. Touch is unreliable underwater (dive UI must be button-driven); speaker beeps are inaudible at depth (vibration is the primary alert channel).
 
 ## Working agreement

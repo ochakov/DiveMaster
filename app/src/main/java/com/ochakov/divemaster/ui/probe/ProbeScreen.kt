@@ -32,7 +32,6 @@ import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
 import com.ochakov.divemaster.ui.theme.DiveAmber
 import com.ochakov.divemaster.ui.theme.DiveGreen
-import com.ochakov.divemaster.ui.theme.DiveRed
 
 /**
  * Phase 0 hardware probe. Answers, on real hardware, the questions the whole
@@ -111,7 +110,7 @@ fun ProbeScreen() {
         val vendorSensors = all.filter {
             it.type != Sensor.TYPE_PRESSURE &&
                 it.type != Sensor.TYPE_AMBIENT_TEMPERATURE &&
-                it.name.contains("temp", ignoreCase = true)
+                (it.name.contains("temp", ignoreCase = true) || it.name.contains("thermo", ignoreCase = true))
         }
         vendorTempNames = vendorSensors.map { it.name }
         val vendorListener = object : SensorEventListener {
@@ -160,11 +159,22 @@ fun ProbeScreen() {
                 }
                 item {
                     // 1 hPa of water is about 1 cm; ~1013 hPa sits at the surface.
-                    val specDepthM = (sensor.maximumRange - 1013f) * 0.01f
+                    // Many HALs declare a nominal atmospheric maximumRange rather than
+                    // the chip's real limit (the Ultra 2 declares ~1013 hPa yet reads
+                    // past it underwater), so a low spec means "ceiling unknown",
+                    // not "unusable" — only readings can prove the true limit.
+                    val specHpa = sensor.maximumRange
+                    val specDepthM = (specHpa - 1013f) * 0.01f
+                    val readsPastSpec = !maxSeenHpa.isNaN() && maxSeenHpa > specHpa + 2f
                     val (message, color) = when {
-                        specDepthM >= 45f -> "OK: spec range covers ~%.0f m of water".format(specDepthM) to DiveGreen
-                        specDepthM >= 10f -> "Caution: spec caps at ~%.1f m — verify by dunking".format(specDepthM) to DiveAmber
-                        else -> "Problem: spec caps at ~%.1f m — likely unusable for diving".format(specDepthM) to DiveRed
+                        specDepthM >= 45f ->
+                            "OK: spec range covers ~%.0f m of water".format(specDepthM) to DiveGreen
+                        readsPastSpec ->
+                            "Reads %.0f hPa past declared spec — spec is nominal. Find the true limit with staged depths."
+                                .format(maxSeenHpa - specHpa) to DiveGreen
+                        else ->
+                            "Declared spec %.0f hPa (~%.1f m) is likely nominal, not a hard limit. Dunk to test, then verify staged depths in water."
+                                .format(specHpa, specDepthM) to DiveAmber
                     }
                     Text(message, style = MaterialTheme.typography.caption1, color = color, textAlign = TextAlign.Center)
                 }
@@ -223,6 +233,16 @@ fun ProbeScreen() {
                     )
                 } else {
                     Text("No ambient temperature sensor", style = MaterialTheme.typography.caption1, color = DiveAmber)
+                }
+            }
+            if (ambientSensorName == null && vendorTempNames.isNotEmpty()) {
+                item {
+                    Text(
+                        "Skin/vendor sensors below will provide water temperature (body-biased, slow to track)",
+                        style = MaterialTheme.typography.caption2,
+                        color = MaterialTheme.colors.onBackground.copy(alpha = 0.6f),
+                        textAlign = TextAlign.Center,
+                    )
                 }
             }
             if (vendorTempNames.isEmpty()) {
