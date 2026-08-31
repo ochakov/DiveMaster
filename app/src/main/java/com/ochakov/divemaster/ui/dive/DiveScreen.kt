@@ -71,6 +71,15 @@ private fun DiveContent(state: DiveDisplayState) {
         }
     }
 
+    // The stop panel renders in place of the MAX/TEMP row so the vertically
+    // centered layout keeps a constant height on the round screen; DONE is a
+    // badge in the bottom row rather than a row of its own.
+    val stopPanelVisible = when (state.safetyStop) {
+        SafetyStopState.NONE, SafetyStopState.DONE -> false
+        SafetyStopState.PENDING -> state.depthM < state.safetyStopMaxDepthM + 3.0
+        SafetyStopState.ACTIVE, SafetyStopState.PAUSED -> true
+    }
+
     // Locked decisions: screen fully on for the whole dive, touch locked out.
     // The overlay consumes every pointer event at the initial pass; swipe-to-
     // dismiss is separately disabled at the nav host while diving. Unlocks
@@ -106,9 +115,13 @@ private fun DiveContent(state: DiveDisplayState) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                LabeledValue("MAX", "%.1f".format(state.maxDepthM))
-                LabeledValue("TEMP", state.tempC?.let { "%.1f°".format(it) } ?: "--")
+            if (!stopPanelVisible) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LabeledValue("MAX", "%.1f".format(state.maxDepthM))
+                    LabeledValue("TEMP", state.tempC?.let { "%.1f°".format(it) } ?: "--")
+                }
+            } else {
+                SafetyStopPanel(state)
             }
             Row(verticalAlignment = Alignment.Bottom) {
                 Text("%.1f".format(state.depthM), fontSize = 58.sp, fontWeight = FontWeight.Bold, color = DiveCyan)
@@ -123,12 +136,14 @@ private fun DiveContent(state: DiveDisplayState) {
                 LabeledValue("NDL", ndlText, valueColor = ndlColor)
                 LabeledValue("TIME", "%d:%02d".format(state.durationSec / 60, state.durationSec % 60))
             }
-            SafetyStopPanel(state)
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(gasLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DiveGreen)
                 Text("ppO₂ %.2f".format(state.ppO2Bar), fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
                 Text("CNS ${(state.cnsFraction * 100).roundToInt()}%", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+                if (state.safetyStop == SafetyStopState.DONE) {
+                    Text("STOP ✓", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = DiveGreen)
+                }
             }
         }
         RateBar(state.verticalRateMPerMin, Modifier.align(Alignment.CenterEnd).padding(end = 10.dp))
@@ -136,10 +151,10 @@ private fun DiveContent(state: DiveDisplayState) {
 }
 
 /**
- * Safety-stop countdown. Shown once the stop is armed: quietly while still
- * deep, as a bold green countdown inside the 4–6 m window, amber with a
- * direction hint while the countdown is paused outside the window, and a
- * small checkmark once complete.
+ * Safety-stop countdown, rendered in the MAX/TEMP row's slot — the caller
+ * gates visibility so the centered layout keeps a constant height. Quiet
+ * while approaching the window, bold green countdown inside it, amber with
+ * a direction hint while paused; DONE is a badge in the bottom row instead.
  */
 @Composable
 private fun SafetyStopPanel(state: DiveDisplayState) {
@@ -147,43 +162,31 @@ private fun SafetyStopPanel(state: DiveDisplayState) {
     val time = "%d:%02d".format(remaining / 60, remaining % 60)
     val windowText = "%.0f–%.0f m".format(state.safetyStopMinDepthM, state.safetyStopMaxDepthM)
     when (state.safetyStop) {
-        SafetyStopState.NONE -> Unit
+        SafetyStopState.PENDING -> Text(
+            "STOP $time at $windowText",
+            fontSize = 11.sp,
+            color = Color.White.copy(alpha = 0.7f),
+        )
 
-        SafetyStopState.PENDING -> {
-            // Only bother the diver once they're ascending toward the window.
-            if (state.depthM < state.safetyStopMaxDepthM + 3.0) {
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    "STOP $time at $windowText",
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.7f),
-                )
-            }
-        }
+        SafetyStopState.ACTIVE -> Text(
+            "STOP $time",
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Black,
+            modifier = Modifier
+                .background(DiveGreen, RoundedCornerShape(12.dp))
+                .padding(horizontal = 14.dp, vertical = 2.dp),
+        )
 
-        SafetyStopState.ACTIVE -> {
-            Spacer(Modifier.height(3.dp))
+        SafetyStopState.PAUSED -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 "STOP $time",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black,
-                modifier = Modifier
-                    .background(DiveGreen, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 14.dp, vertical = 2.dp),
-            )
-        }
-
-        SafetyStopState.PAUSED -> {
-            Spacer(Modifier.height(3.dp))
-            Text(
-                "STOP $time",
-                fontSize = 18.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.Black,
                 modifier = Modifier
                     .background(DiveAmber, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                    .padding(horizontal = 12.dp, vertical = 1.dp),
             )
             Text(
                 if (state.depthM > state.safetyStopMaxDepthM) "PAUSED · ascend to $windowText" else "PAUSED · descend to $windowText",
@@ -192,15 +195,7 @@ private fun SafetyStopPanel(state: DiveDisplayState) {
             )
         }
 
-        SafetyStopState.DONE -> {
-            Spacer(Modifier.height(3.dp))
-            Text(
-                "STOP ✓",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = DiveGreen,
-            )
-        }
+        SafetyStopState.NONE, SafetyStopState.DONE -> Unit // not rendered here
     }
 }
 
