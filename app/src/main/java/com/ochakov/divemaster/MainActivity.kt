@@ -7,6 +7,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import com.ochakov.divemaster.engine.DivePhase
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
@@ -51,7 +55,25 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DiveMasterNavHost() {
     val navController = rememberSwipeDismissableNavController()
-    SwipeDismissableNavHost(navController = navController, startDestination = "surface") {
+    val engineState by DiveService.displayState.collectAsState()
+    val diving = engineState?.phase == DivePhase.DIVING
+
+    // Hands-free navigation: jump to the dive screen the moment a dive is
+    // confirmed, return to the surface screen when it ends. Swipe-to-dismiss
+    // is disabled while diving so water contact cannot navigate away.
+    LaunchedEffect(diving) {
+        if (diving) {
+            navController.navigate("dive") { launchSingleTop = true }
+        } else if (navController.currentDestination?.route == "dive") {
+            navController.popBackStack("surface", false)
+        }
+    }
+
+    SwipeDismissableNavHost(
+        navController = navController,
+        startDestination = "surface",
+        userSwipeEnabled = !diving,
+    ) {
         composable("surface") {
             SurfaceScreen(
                 onOpenLog = { navController.navigate("log") },

@@ -140,6 +140,22 @@ fun SurfaceScreen(
                         color = MaterialTheme.colors.onBackground.copy(alpha = 0.6f),
                     )
                 }
+                if (!diving) {
+                    item {
+                        val nowMs = now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                        val intervalSec = ((nowMs - dive.endEpochMs) / 1000).coerceAtLeast(0)
+                        val text = if (intervalSec < 3600) {
+                            "%d min".format(intervalSec / 60)
+                        } else {
+                            "%dh %02dm".format(intervalSec / 3600, (intervalSec % 3600) / 60)
+                        }
+                        Text(
+                            "Surface interval $text",
+                            style = MaterialTheme.typography.caption1,
+                            color = MaterialTheme.colors.primary.copy(alpha = 0.9f),
+                        )
+                    }
+                }
             }
             item { Spacer(Modifier.height(6.dp)) }
             if (settings.simulatorEnabled && !simRunning) {

@@ -3,6 +3,7 @@ package com.ochakov.divemaster.service
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -13,6 +14,7 @@ import android.hardware.SensorManager
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import com.ochakov.divemaster.MainActivity
 import com.ochakov.divemaster.R
 import com.ochakov.divemaster.data.db.DiveMasterDatabase
 import com.ochakov.divemaster.data.settings.SettingsRepository
@@ -173,6 +175,13 @@ class DiveService : Service() {
                     acquire(MAX_DIVE_WAKELOCK_MS)
                 }
             notify("Dive in progress")
+            if (!activityVisible) {
+                // Best effort: recent-foreground grace often allows this; when the
+                // OS blocks it the ongoing notification is the way back in.
+                runCatching {
+                    startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            }
         } else if (!diving && wakeLock != null) {
             wakeLock?.release()
             wakeLock = null
@@ -240,6 +249,14 @@ class DiveService : Service() {
             .setContentTitle("DiveMaster")
             .setContentText(text)
             .setOngoing(true)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    this,
+                    0,
+                    Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
             .build()
 
     private fun notify(text: String) {

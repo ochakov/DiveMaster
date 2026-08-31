@@ -33,7 +33,7 @@ Dive detection: start at depth ≥ 1.2 m held 3 s (clock backdated to submersion
 - [x] Phase 1 — scaffold
 - [ ] Phase 2 — pin deco golden values against a reference implementation
 - [x] Phase 3 — dive engine: foreground service, sensor pipeline (median filter → 1 Hz), state machine, crash recovery, simulator pressure source, live dive-screen values
-- [ ] Phase 4 — live dive + surface UI polish (auto-switch on submersion, touch lock, always-on)
+- [x] Phase 4 — real-water UI: auto-switch to dive screen on submersion (and back on surfacing), swipe-dismiss disabled + all touch consumed while diving (auto-unlocks at surface), screen kept on for the whole dive, notification tap reopens the app, best-effort activity launch from the service on dive start, surface-interval readout on the surface screen
 - [ ] Phase 5 — editable settings
 - [ ] Phase 6 — alert engine (distinct vibration patterns primary; beep secondary)
 - [ ] Phase 7 — dive log detail
