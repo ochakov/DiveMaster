@@ -23,7 +23,7 @@ class SimulatorProfileTest {
 
     @Test
     fun `profile duration leaves room for the end-of-dive confirmation`() {
-        assertEquals(866.7, SimulatorProfile.totalDurationSec, 0.5)
+        assertEquals(841.7, SimulatorProfile.totalDurationSec, 0.5)
         // The last 60+ seconds sit on the surface so the engine can close the dive.
         assertEquals(0.0, SimulatorProfile.depthAt(SimulatorProfile.totalDurationSec - 65.0), 1e-9)
     }

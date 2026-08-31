@@ -19,7 +19,7 @@ object SimulatorProfile {
         Segment(15.0, 7.5, 7.5),                  // ...countdown pauses
         Segment(10.0, 7.5, 5.0),                  // back into the window
         Segment(120.0, 5.0, 5.0),                 // finish the stop (90+120 > 180 s)
-        Segment(5.0 / 6.0 * 60.0, 5.0, 0.0),      // final ascent at 6 m/min
+        Segment(5.0 / 12.0 * 60.0, 5.0, 0.0),     // final ascent deliberately fast (12 m/min) to demo the ascent alert
         Segment(90.0, 0.0, 0.0),                  // surface tail (> end-hold)
     )
 

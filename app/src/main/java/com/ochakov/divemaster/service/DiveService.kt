@@ -19,6 +19,8 @@ import com.ochakov.divemaster.R
 import com.ochakov.divemaster.data.db.DiveMasterDatabase
 import com.ochakov.divemaster.data.settings.SettingsRepository
 import com.ochakov.divemaster.deco.DepthConverter
+import com.ochakov.divemaster.engine.AlertConfig
+import com.ochakov.divemaster.engine.AlertEvaluator
 import com.ochakov.divemaster.engine.DiveDisplayState
 import com.ochakov.divemaster.engine.DiveEngine
 import com.ochakov.divemaster.engine.DiveEngineConfig
@@ -59,6 +61,7 @@ class DiveService : Service() {
     private var sensorManager: SensorManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var simJob: Job? = null
+    private var alertSounder: AlertSounder? = null
 
     @Volatile private var ambientTempC: Double? = null
     @Volatile private var skinTempC: Double? = null
@@ -98,6 +101,7 @@ class DiveService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("Surface monitoring"))
         serviceRunning.value = true
+        alertSounder = AlertSounder(this)
         val dao = DiveMasterDatabase.get(this).diveDao()
         scope.launch {
             val settings = SettingsRepository(this@DiveService).settings.first()
@@ -117,6 +121,16 @@ class DiveService : Service() {
                 restored.cnsFraction,
             )
             engine = eng
+            val evaluator = AlertEvaluator(
+                AlertConfig(
+                    rateAlertsEnabled = settings.rateAlertsEnabled,
+                    ascentRateMPerMin = settings.ascentAlertMPerMin,
+                    descentRateMPerMin = settings.descentAlertMPerMin,
+                    ndlAlertEnabled = settings.ndlAlertEnabled,
+                    ndlAlertMinutes = settings.ndlAlertMinutes,
+                    maxPpO2Bar = settings.maxPpO2Bar,
+                ),
+            )
             for (input in inputs) {
                 val events = when (input) {
                     is Input.Sample -> eng.onSample(input.sample)
@@ -125,6 +139,12 @@ class DiveService : Service() {
                 rec.handle(events, eng, System.currentTimeMillis())
                 displayState.value = eng.displayState.copy(simulated = simulatorRunning.value)
                 updateDiveMode(eng.displayState.phase == DivePhase.DIVING)
+                if (input is Input.Sample) {
+                    val alerts = evaluator.evaluate(eng.displayState, input.sample.timestampMs)
+                    if (alerts.isNotEmpty()) {
+                        alertSounder?.play(alerts, settings.vibrateEnabled, settings.beepEnabled)
+                    }
+                }
             }
         }
         registerSensors()
@@ -147,6 +167,8 @@ class DiveService : Service() {
         val rec = recorder
         if (eng != null && rec != null) runBlocking { rec.persistTissueNow(eng) }
         scope.cancel()
+        alertSounder?.release()
+        alertSounder = null
         wakeLock?.release()
         wakeLock = null
         serviceRunning.value = false

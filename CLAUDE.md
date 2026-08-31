@@ -37,7 +37,7 @@ Safety stop (Ev's spec, 2026-08-31): arms once the dive passes 10 m; countdown (
 - [x] Phase 3 — dive engine: foreground service, sensor pipeline (median filter → 1 Hz), state machine, crash recovery, simulator pressure source, live dive-screen values
 - [x] Phase 4 — real-water UI: auto-switch to dive screen on submersion (and back on surfacing), swipe-dismiss disabled + all touch consumed while diving (auto-unlocks at surface), screen kept on for the whole dive, notification tap reopens the app, best-effort activity launch from the service on dive start, surface-interval readout on the surface screen
 - [ ] Phase 5 — editable settings
-- [ ] Phase 6 — alert engine (distinct vibration patterns primary; beep secondary)
+- [x] Phase 6 — alert engine: pure `AlertEvaluator` in `:core:engine` (edge-triggering with hysteresis for low-NDL/deco/CNS/stop-complete; cooldown-repeating for ascent/descent rate, ppO₂, skipped stop; per-dive reset, CNS memory spans dives), `AlertSounder` in `:app` (distinct vibration waveform per alert, most-severe-wins per sample, beeps secondary via ToneGenerator). Alerts: ascent/descent rate, low NDL, deco entered, ppO₂ > max, CNS ≥ 80%/100%, safety-stop complete, safety-stop violated (ascending past unfinished stop). Simulator's final ascent is deliberately 12 m/min to demo the ascent alert.
 - [ ] Phase 7 — dive log detail
 - [ ] Phase 8 — hardening, field validation, first-run disclaimer
 
