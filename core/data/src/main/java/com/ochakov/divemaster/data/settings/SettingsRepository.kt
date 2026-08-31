@@ -85,9 +85,79 @@ class SettingsRepository(context: Context) {
         }
     }
 
+    /** Raising GF low above GF high drags high up with it (low <= high invariant). */
+    suspend fun setGfLowPercent(percent: Int) {
+        dataStore.edit {
+            val low = percent / 100.0
+            it[Keys.GF_LOW] = low
+            val high = it[Keys.GF_HIGH] ?: DiveSettings().gradientFactors.high
+            if (high < low) it[Keys.GF_HIGH] = low
+        }
+    }
+
+    suspend fun setGfHighPercent(percent: Int) {
+        dataStore.edit {
+            val high = percent / 100.0
+            it[Keys.GF_HIGH] = high
+            val low = it[Keys.GF_LOW] ?: DiveSettings().gradientFactors.low
+            if (low > high) it[Keys.GF_LOW] = high
+        }
+    }
+
+    suspend fun setMaxPpO2Bar(value: Double) {
+        dataStore.edit { it[Keys.MAX_PPO2] = value }
+    }
+
+    suspend fun setSafetyStopMinutes(minutes: Int) {
+        dataStore.edit { it[Keys.SAFETY_STOP] = minutes }
+    }
+
+    /** The window keeps at least 1 m of height; moving one bound pushes the other. */
+    suspend fun setSafetyStopMinDepthM(meters: Double) {
+        dataStore.edit {
+            it[Keys.SAFETY_STOP_MIN_DEPTH] = meters
+            val max = it[Keys.SAFETY_STOP_MAX_DEPTH] ?: DiveSettings().safetyStopMaxDepthM
+            if (max < meters + 1.0) it[Keys.SAFETY_STOP_MAX_DEPTH] = meters + 1.0
+        }
+    }
+
+    suspend fun setSafetyStopMaxDepthM(meters: Double) {
+        dataStore.edit {
+            it[Keys.SAFETY_STOP_MAX_DEPTH] = meters
+            val min = it[Keys.SAFETY_STOP_MIN_DEPTH] ?: DiveSettings().safetyStopMinDepthM
+            if (min > meters - 1.0) it[Keys.SAFETY_STOP_MIN_DEPTH] = meters - 1.0
+        }
+    }
+
+    suspend fun setRateAlertsEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.RATE_ALERTS] = enabled }
+    }
+
+    suspend fun setAscentAlertMPerMin(value: Double) {
+        dataStore.edit { it[Keys.ASCENT] = value }
+    }
+
+    suspend fun setDescentAlertMPerMin(value: Double) {
+        dataStore.edit { it[Keys.DESCENT] = value }
+    }
+
+    suspend fun setNdlAlertEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.NDL_ALERT] = enabled }
+    }
+
+    suspend fun setNdlAlertMinutes(minutes: Int) {
+        dataStore.edit { it[Keys.NDL_MIN] = minutes }
+    }
+
+    suspend fun setBeepEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.BEEP] = enabled }
+    }
+
+    suspend fun setVibrateEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.VIBRATE] = enabled }
+    }
+
     suspend fun setSimulatorEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.SIMULATOR] = enabled }
     }
-
-    // Remaining setters land together with the editable settings screen (Phase 5).
 }

@@ -15,11 +15,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -27,8 +29,11 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.Text
 import com.ochakov.divemaster.engine.DiveDisplayState
 import com.ochakov.divemaster.engine.DivePhase
+import com.ochakov.divemaster.data.settings.DiveSettings
+import com.ochakov.divemaster.data.settings.SettingsRepository
 import com.ochakov.divemaster.engine.SafetyStopState
 import com.ochakov.divemaster.service.DiveService
+import com.ochakov.divemaster.ui.Units
 import com.ochakov.divemaster.ui.theme.DiveAmber
 import com.ochakov.divemaster.ui.theme.DiveCyan
 import com.ochakov.divemaster.ui.theme.DiveGreen
@@ -43,13 +48,15 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun DiveScreen() {
+    val context = LocalContext.current
+    val settings by remember { SettingsRepository(context) }.settings.collectAsState(initial = DiveSettings())
     val state by DiveService.displayState.collectAsState()
     val live = state?.takeIf { it.phase == DivePhase.DIVING }
-    if (live != null) DiveContent(live) else PreviewContent()
+    if (live != null) DiveContent(live, settings.metricUnits) else PreviewContent()
 }
 
 @Composable
-private fun DiveContent(state: DiveDisplayState) {
+private fun DiveContent(state: DiveDisplayState, metric: Boolean) {
     val o2Percent = (state.gasO2Fraction * 100).roundToInt()
     val gasLabel = if (o2Percent == 21) "AIR" else "EAN$o2Percent"
 
@@ -117,16 +124,16 @@ private fun DiveContent(state: DiveDisplayState) {
         ) {
             if (!stopPanelVisible) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    LabeledValue("MAX", "%.1f".format(state.maxDepthM))
-                    LabeledValue("TEMP", state.tempC?.let { "%.1f°".format(it) } ?: "--")
+                    LabeledValue("MAX", Units.depth(state.maxDepthM, metric))
+                    LabeledValue("TEMP", state.tempC?.let { Units.tempShort(it, metric) } ?: "--")
                 }
             } else {
-                SafetyStopPanel(state)
+                SafetyStopPanel(state, metric)
             }
             Row(verticalAlignment = Alignment.Bottom) {
-                Text("%.1f".format(state.depthM), fontSize = 58.sp, fontWeight = FontWeight.Bold, color = DiveCyan)
+                Text(Units.depth(state.depthM, metric), fontSize = 58.sp, fontWeight = FontWeight.Bold, color = DiveCyan)
                 Text(
-                    "m",
+                    Units.depthUnit(metric),
                     fontSize = 16.sp,
                     color = DiveCyan.copy(alpha = 0.8f),
                     modifier = Modifier.padding(start = 2.dp, bottom = 10.dp),
@@ -157,10 +164,10 @@ private fun DiveContent(state: DiveDisplayState) {
  * a direction hint while paused; DONE is a badge in the bottom row instead.
  */
 @Composable
-private fun SafetyStopPanel(state: DiveDisplayState) {
+private fun SafetyStopPanel(state: DiveDisplayState, metric: Boolean) {
     val remaining = state.safetyStopRemainingSec
     val time = "%d:%02d".format(remaining / 60, remaining % 60)
-    val windowText = "%.0f–%.0f m".format(state.safetyStopMinDepthM, state.safetyStopMaxDepthM)
+    val windowText = Units.windowText(state.safetyStopMinDepthM, state.safetyStopMaxDepthM, metric)
     when (state.safetyStop) {
         SafetyStopState.PENDING -> Text(
             "STOP $time at $windowText",

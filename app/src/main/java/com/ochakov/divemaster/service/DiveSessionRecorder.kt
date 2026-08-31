@@ -21,9 +21,14 @@ import kotlin.math.roundToInt
  */
 class DiveSessionRecorder(
     private val dao: DiveDao,
-    private val settings: DiveSettings,
+    private var settings: DiveSettings,
 ) {
     data class Restored(val tissue: TissueState, val cnsFraction: Double)
+
+    /** Called by the service on surface-time settings reloads; affects future dive rows only. */
+    fun updateSettings(newSettings: DiveSettings) {
+        settings = newSettings
+    }
 
     private var currentDive: DiveEntity? = null
     private var lastTissuePersistMs = 0L

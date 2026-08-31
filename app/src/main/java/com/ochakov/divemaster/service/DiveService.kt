@@ -17,8 +17,10 @@ import androidx.core.app.NotificationCompat
 import com.ochakov.divemaster.MainActivity
 import com.ochakov.divemaster.R
 import com.ochakov.divemaster.data.db.DiveMasterDatabase
+import com.ochakov.divemaster.data.settings.DiveSettings
 import com.ochakov.divemaster.data.settings.SettingsRepository
 import com.ochakov.divemaster.deco.DepthConverter
+import com.ochakov.divemaster.deco.TissueState
 import com.ochakov.divemaster.engine.AlertConfig
 import com.ochakov.divemaster.engine.AlertEvaluator
 import com.ochakov.divemaster.engine.DiveDisplayState
@@ -51,6 +53,7 @@ class DiveService : Service() {
     private sealed interface Input {
         data class Sample(val sample: PressureSample) : Input
         data object Abort : Input
+        data class SettingsChanged(val settings: DiveSettings) : Input
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -104,46 +107,56 @@ class DiveService : Service() {
         alertSounder = AlertSounder(this)
         val dao = DiveMasterDatabase.get(this).diveDao()
         scope.launch {
-            val settings = SettingsRepository(this@DiveService).settings.first()
+            val repository = SettingsRepository(this@DiveService)
+            var settings = repository.settings.first()
             val rec = DiveSessionRecorder(dao, settings)
             val restored = rec.restore()
             recorder = rec
-            val eng = DiveEngine(
-                DiveEngineConfig(
-                    settings.waterType,
-                    settings.gas,
-                    settings.gradientFactors,
-                    safetyStopSeconds = settings.safetyStopMinutes * 60,
-                    safetyStopMinDepthM = settings.safetyStopMinDepthM,
-                    safetyStopMaxDepthM = settings.safetyStopMaxDepthM,
-                ),
-                restored.tissue,
-                restored.cnsFraction,
-            )
+            var eng = buildEngine(settings, restored.tissue, restored.cnsFraction, null)
             engine = eng
-            val evaluator = AlertEvaluator(
-                AlertConfig(
-                    rateAlertsEnabled = settings.rateAlertsEnabled,
-                    ascentRateMPerMin = settings.ascentAlertMPerMin,
-                    descentRateMPerMin = settings.descentAlertMPerMin,
-                    ndlAlertEnabled = settings.ndlAlertEnabled,
-                    ndlAlertMinutes = settings.ndlAlertMinutes,
-                    maxPpO2Bar = settings.maxPpO2Bar,
-                ),
-            )
+            var evaluator = buildEvaluator(settings)
+            var pendingSettings: DiveSettings? = null
+
+            // Settings edits arrive through the same channel as samples so the
+            // engine is only ever touched from this coroutine.
+            launch {
+                repository.settings.collect { inputs.trySend(Input.SettingsChanged(it)) }
+            }
+
             for (input in inputs) {
-                val events = when (input) {
-                    is Input.Sample -> eng.onSample(input.sample)
-                    Input.Abort -> eng.abortDive()
-                }
-                rec.handle(events, eng, System.currentTimeMillis())
-                displayState.value = eng.displayState.copy(simulated = simulatorRunning.value)
-                updateDiveMode(eng.displayState.phase == DivePhase.DIVING)
-                if (input is Input.Sample) {
-                    val alerts = evaluator.evaluate(eng.displayState, input.sample.timestampMs)
-                    if (alerts.isNotEmpty()) {
-                        alertSounder?.play(alerts, settings.vibrateEnabled, settings.beepEnabled)
+                when (input) {
+                    is Input.SettingsChanged ->
+                        if (input.settings != settings) pendingSettings = input.settings
+
+                    is Input.Sample -> {
+                        val events = eng.onSample(input.sample)
+                        rec.handle(events, eng, System.currentTimeMillis())
+                        displayState.value = eng.displayState.copy(simulated = simulatorRunning.value)
+                        updateDiveMode(eng.displayState.phase == DivePhase.DIVING)
+                        val alerts = evaluator.evaluate(eng.displayState, input.sample.timestampMs)
+                        if (alerts.isNotEmpty()) {
+                            alertSounder?.play(alerts, settings.vibrateEnabled, settings.beepEnabled)
+                        }
                     }
+
+                    Input.Abort -> {
+                        val events = eng.abortDive()
+                        rec.handle(events, eng, System.currentTimeMillis())
+                        displayState.value = eng.displayState.copy(simulated = simulatorRunning.value)
+                        updateDiveMode(false)
+                    }
+                }
+
+                // Apply edited settings only on the surface — never mid-dive.
+                // Tissue and CNS state carry over into the rebuilt engine.
+                val pending = pendingSettings
+                if (pending != null && eng.displayState.phase == DivePhase.SURFACE) {
+                    settings = pending
+                    pendingSettings = null
+                    eng = buildEngine(settings, eng.tissue, eng.cnsFraction, eng.displayState.surfacePressureBar)
+                    engine = eng
+                    evaluator = buildEvaluator(settings)
+                    rec.updateSettings(settings)
                 }
             }
         }
@@ -176,6 +189,36 @@ class DiveService : Service() {
         displayState.value = null
         super.onDestroy()
     }
+
+    private fun buildEngine(
+        settings: DiveSettings,
+        tissue: TissueState,
+        cnsFraction: Double,
+        surfaceBar: Double?,
+    ) = DiveEngine(
+        DiveEngineConfig(
+            settings.waterType,
+            settings.gas,
+            settings.gradientFactors,
+            safetyStopSeconds = settings.safetyStopMinutes * 60,
+            safetyStopMinDepthM = settings.safetyStopMinDepthM,
+            safetyStopMaxDepthM = settings.safetyStopMaxDepthM,
+        ),
+        tissue,
+        cnsFraction,
+        surfaceBar,
+    )
+
+    private fun buildEvaluator(settings: DiveSettings) = AlertEvaluator(
+        AlertConfig(
+            rateAlertsEnabled = settings.rateAlertsEnabled,
+            ascentRateMPerMin = settings.ascentAlertMPerMin,
+            descentRateMPerMin = settings.descentAlertMPerMin,
+            ndlAlertEnabled = settings.ndlAlertEnabled,
+            ndlAlertMinutes = settings.ndlAlertMinutes,
+            maxPpO2Bar = settings.maxPpO2Bar,
+        ),
+    )
 
     private fun registerSensors() {
         val sm = getSystemService(Context.SENSOR_SERVICE) as SensorManager

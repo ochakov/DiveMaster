@@ -33,6 +33,7 @@ import com.ochakov.divemaster.data.settings.DiveSettings
 import com.ochakov.divemaster.data.settings.SettingsRepository
 import com.ochakov.divemaster.engine.DivePhase
 import com.ochakov.divemaster.service.DiveService
+import com.ochakov.divemaster.ui.Units
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDateTime
@@ -121,14 +122,14 @@ fun SurfaceScreen(
             } else {
                 item {
                     Text(
-                        "%.1f m max · %d min".format(dive.maxDepthM, dive.durationSec / 60),
+                        "${Units.depthWithUnit(dive.maxDepthM, settings.metricUnits)} max · ${dive.durationSec / 60} min",
                         style = MaterialTheme.typography.body1,
                     )
                 }
                 item {
-                    val temp = dive.minTempC?.let { " · %.0f°C".format(it) } ?: ""
+                    val temp = dive.minTempC?.let { " · ${Units.temp(it, settings.metricUnits)}" } ?: ""
                     Text(
-                        "%.1f m avg%s".format(dive.avgDepthM, temp),
+                        "${Units.depthWithUnit(dive.avgDepthM, settings.metricUnits)} avg$temp",
                         style = MaterialTheme.typography.body2,
                         color = MaterialTheme.colors.onBackground.copy(alpha = 0.8f),
                     )

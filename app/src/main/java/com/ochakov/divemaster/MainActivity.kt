@@ -18,6 +18,7 @@ import com.ochakov.divemaster.service.DiveService
 import com.ochakov.divemaster.ui.dive.DiveScreen
 import com.ochakov.divemaster.ui.log.LogScreen
 import com.ochakov.divemaster.ui.probe.ProbeScreen
+import com.ochakov.divemaster.ui.settings.NumberSettingScreen
 import com.ochakov.divemaster.ui.settings.SettingsScreen
 import com.ochakov.divemaster.ui.surface.SurfaceScreen
 import com.ochakov.divemaster.ui.theme.DiveMasterTheme
@@ -84,7 +85,12 @@ fun DiveMasterNavHost() {
         }
         composable("probe") { ProbeScreen() }
         composable("dive") { DiveScreen() }
-        composable("settings") { SettingsScreen() }
+        composable("settings") {
+            SettingsScreen(onEditNumber = { id -> navController.navigate("setting/${id.name}") })
+        }
+        composable("setting/{id}") { entry ->
+            NumberSettingScreen(entry.arguments?.getString("id") ?: "")
+        }
         composable("log") { LogScreen() }
     }
 }
