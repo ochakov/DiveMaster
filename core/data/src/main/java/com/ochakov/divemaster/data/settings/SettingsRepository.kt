@@ -35,6 +35,7 @@ class SettingsRepository(context: Context) {
         val BEEP = booleanPreferencesKey("beep_enabled")
         val VIBRATE = booleanPreferencesKey("vibrate_enabled")
         val SIMULATOR = booleanPreferencesKey("simulator_enabled")
+        val DISCLAIMER = booleanPreferencesKey("disclaimer_accepted")
     }
 
     val settings: Flow<DiveSettings> = dataStore.data.map { p ->
@@ -63,6 +64,7 @@ class SettingsRepository(context: Context) {
             beepEnabled = p[Keys.BEEP] ?: d.beepEnabled,
             vibrateEnabled = p[Keys.VIBRATE] ?: d.vibrateEnabled,
             simulatorEnabled = p[Keys.SIMULATOR] ?: d.simulatorEnabled,
+            disclaimerAccepted = p[Keys.DISCLAIMER] ?: d.disclaimerAccepted,
         )
     }
 
@@ -159,5 +161,9 @@ class SettingsRepository(context: Context) {
 
     suspend fun setSimulatorEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.SIMULATOR] = enabled }
+    }
+
+    suspend fun setDisclaimerAccepted() {
+        dataStore.edit { it[Keys.DISCLAIMER] = true }
     }
 }

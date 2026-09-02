@@ -184,6 +184,18 @@ fun SettingsScreen(onEditNumber: (NumberSettingId) -> Unit) {
                     textAlign = TextAlign.Center,
                 )
             }
+            item {
+                val version = remember {
+                    runCatching {
+                        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                    }.getOrNull() ?: "?"
+                }
+                Text(
+                    "DiveMaster v$version",
+                    fontSize = 9.sp,
+                    color = MaterialTheme.colors.onBackground.copy(alpha = 0.4f),
+                )
+            }
         }
     }
 }

@@ -61,6 +61,7 @@ fun SurfaceScreen(
     val settings by settingsRepository.settings.collectAsState(initial = DiveSettings())
     val engineState by DiveService.displayState.collectAsState()
     val simRunning by DiveService.simulatorRunning.collectAsState()
+    val battery by DiveService.batteryPct.collectAsState()
     val diving = engineState?.phase == DivePhase.DIVING
 
     val lastDive by viewModel.lastDive.collectAsState(initial = null)
@@ -91,6 +92,16 @@ fun SurfaceScreen(
                     style = MaterialTheme.typography.caption1,
                     color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
                 )
+            }
+            battery?.let { pct ->
+                item {
+                    Text(
+                        "Battery $pct%",
+                        style = MaterialTheme.typography.caption2,
+                        color = if (pct <= 15) MaterialTheme.colors.error
+                        else MaterialTheme.colors.onBackground.copy(alpha = 0.6f),
+                    )
+                }
             }
             if (diving) {
                 item {

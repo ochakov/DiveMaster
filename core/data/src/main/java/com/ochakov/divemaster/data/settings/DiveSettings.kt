@@ -22,6 +22,7 @@ data class DiveSettings(
     val beepEnabled: Boolean = true,
     val vibrateEnabled: Boolean = true,
     val simulatorEnabled: Boolean = false,
+    val disclaimerAccepted: Boolean = false,
 ) {
     val gas: Gas get() = Gas(o2Fraction)
 }

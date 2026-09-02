@@ -11,8 +11,13 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.BatteryManager
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import com.ochakov.divemaster.MainActivity
 import com.ochakov.divemaster.R
@@ -65,6 +70,9 @@ class DiveService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var simJob: Job? = null
     private var alertSounder: AlertSounder? = null
+
+    @Volatile private var lastSampleWallMs = 0L
+    private var batteryWarned = false
 
     @Volatile private var ambientTempC: Double? = null
     @Volatile private var skinTempC: Double? = null
@@ -129,6 +137,7 @@ class DiveService : Service() {
                         if (input.settings != settings) pendingSettings = input.settings
 
                     is Input.Sample -> {
+                        lastSampleWallMs = System.currentTimeMillis()
                         val events = eng.onSample(input.sample)
                         rec.handle(events, eng, System.currentTimeMillis())
                         displayState.value = eng.displayState.copy(simulated = simulatorRunning.value)
@@ -161,6 +170,48 @@ class DiveService : Service() {
             }
         }
         registerSensors()
+        startHealthWatchdog()
+    }
+
+    /**
+     * Device-health guard. A frozen depth display is the most dangerous
+     * silent failure a dive computer can have, so a stalled sensor mid-dive
+     * flags the UI and buzzes; low battery during a dive warns once. These
+     * warnings vibrate regardless of the alert toggles.
+     */
+    private fun startHealthWatchdog() {
+        scope.launch {
+            val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            var lastBatteryPollMs = 0L
+            while (true) {
+                delay(2_000)
+                val now = System.currentTimeMillis()
+                val diving = engine?.displayState?.phase == DivePhase.DIVING
+                val stale = diving && lastSampleWallMs > 0 && now - lastSampleWallMs > SENSOR_STALE_MS
+                if (stale && !sensorStale.value) warnBuzz(longArrayOf(0, 500, 200, 500))
+                sensorStale.value = stale
+                if (now - lastBatteryPollMs >= 30_000) {
+                    lastBatteryPollMs = now
+                    val pct = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                    batteryPct.value = if (pct in 1..100) pct else null
+                    if (diving && (batteryPct.value ?: 100) <= LOW_BATTERY_PCT && !batteryWarned) {
+                        batteryWarned = true
+                        warnBuzz(longArrayOf(0, 150, 100, 150, 100, 150))
+                    }
+                }
+                if (!diving) batteryWarned = false
+            }
+        }
+    }
+
+    private fun warnBuzz(pattern: LongArray) {
+        val vibrator = if (Build.VERSION.SDK_INT >= 31) {
+            (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+        vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -186,6 +237,7 @@ class DiveService : Service() {
         wakeLock = null
         serviceRunning.value = false
         simulatorRunning.value = false
+        sensorStale.value = false
         displayState.value = null
         super.onDestroy()
     }
@@ -341,6 +393,8 @@ class DiveService : Service() {
         private const val SIM_TIME_SCALE = 4L
         private const val SIM_WATER_TEMP_C = 24.0
         private const val MAX_DIVE_WAKELOCK_MS = 6L * 60 * 60 * 1000
+        private const val SENSOR_STALE_MS = 5_000L
+        private const val LOW_BATTERY_PCT = 15
 
         const val ACTION_MONITOR = "com.ochakov.divemaster.MONITOR"
         const val ACTION_START_SIM = "com.ochakov.divemaster.START_SIM"
@@ -350,6 +404,8 @@ class DiveService : Service() {
         val displayState = MutableStateFlow<DiveDisplayState?>(null)
         val simulatorRunning = MutableStateFlow(false)
         val serviceRunning = MutableStateFlow(false)
+        val sensorStale = MutableStateFlow(false)
+        val batteryPct = MutableStateFlow<Int?>(null)
 
         @Volatile
         var activityVisible = false

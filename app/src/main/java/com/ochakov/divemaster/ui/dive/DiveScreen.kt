@@ -108,14 +108,22 @@ private fun DiveContent(state: DiveDisplayState, metric: Boolean) {
                 }
             },
     ) {
-        if (state.simulated) {
-            Text(
-                "SIM",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = DiveAmber,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
-            )
+        val stale by DiveService.sensorStale.collectAsState()
+        val battery by DiveService.batteryPct.collectAsState()
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+        ) {
+            if (state.simulated) {
+                Text("SIM", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DiveAmber)
+            }
+            if (stale) {
+                Text("SENSOR", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DiveRed)
+            }
+            val pct = battery
+            if (pct != null && pct <= 15) {
+                Text("BAT $pct%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DiveRed)
+            }
         }
         Column(
             modifier = Modifier.fillMaxSize(),

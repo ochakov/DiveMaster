@@ -10,7 +10,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import com.ochakov.divemaster.data.settings.SettingsRepository
 import com.ochakov.divemaster.engine.DivePhase
+import com.ochakov.divemaster.ui.DisclaimerScreen
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
@@ -34,7 +38,7 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             DiveMasterTheme {
-                DiveMasterNavHost()
+                DiveMasterRoot()
             }
         }
     }
@@ -51,6 +55,16 @@ class MainActivity : ComponentActivity() {
             DiveService.start(this, DiveService.ACTION_MAYBE_STOP)
         }
         super.onStop()
+    }
+}
+
+@Composable
+fun DiveMasterRoot() {
+    val context = LocalContext.current
+    val settings by remember { SettingsRepository(context) }.settings.collectAsState(initial = null)
+    when (val current = settings) {
+        null -> Unit // brief blank while DataStore loads
+        else -> if (current.disclaimerAccepted) DiveMasterNavHost() else DisclaimerScreen()
     }
 }
 
