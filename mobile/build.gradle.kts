@@ -5,12 +5,14 @@ plugins {
 }
 
 android {
-    namespace = "com.ochakov.divemaster"
+    namespace = "com.ochakov.divemaster.mobile"
     compileSdk = 35
 
     defaultConfig {
+        // Same applicationId as the wear app: required for one Play listing
+        // and for the Wearable Data Layer to connect the two.
         applicationId = "com.ochakov.divemaster"
-        minSdk = 30
+        minSdk = 26
         targetSdk = 34
         versionCode = 2
         versionName = "0.8.0"
@@ -39,21 +41,14 @@ android {
 dependencies {
     implementation(project(":core:deco"))
     implementation(project(":core:data"))
-    implementation(project(":core:engine"))
 
     implementation(libs.androidx.core.ktx)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
-    implementation(libs.compose.ui.tooling.preview)
-    debugImplementation(libs.compose.ui.tooling)
-
-    implementation(libs.wear.compose.material)
-    implementation(libs.wear.compose.foundation)
-    implementation(libs.wear.compose.navigation)
-
+    implementation(libs.compose.material3)
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.runtime.compose)
-    implementation(libs.lifecycle.viewmodel.compose)
+    debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.play.services.wearable)
     implementation(libs.coroutines.play.services)

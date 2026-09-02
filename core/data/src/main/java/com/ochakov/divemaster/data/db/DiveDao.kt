@@ -28,6 +28,13 @@ interface DiveDao {
     @Query("SELECT * FROM dives WHERE endEpochMs = 0")
     suspend fun openDives(): List<DiveEntity>
 
+    @Query("SELECT * FROM dives WHERE endEpochMs > 0 ORDER BY startEpochMs DESC")
+    suspend fun allFinalized(): List<DiveEntity>
+
+    /** Start time is the stable cross-device identity of a dive. */
+    @Query("SELECT * FROM dives WHERE startEpochMs = :startEpochMs LIMIT 1")
+    suspend fun diveByStart(startEpochMs: Long): DiveEntity?
+
     @Query("SELECT * FROM dives WHERE id = :diveId")
     suspend fun dive(diveId: Long): DiveEntity?
 

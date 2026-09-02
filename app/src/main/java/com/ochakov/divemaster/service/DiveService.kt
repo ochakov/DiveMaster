@@ -32,6 +32,7 @@ import com.ochakov.divemaster.engine.DiveDisplayState
 import com.ochakov.divemaster.engine.DiveEngine
 import com.ochakov.divemaster.engine.DiveEngineConfig
 import com.ochakov.divemaster.engine.DivePhase
+import com.ochakov.divemaster.engine.EngineEvent
 import com.ochakov.divemaster.engine.PressureSample
 import com.ochakov.divemaster.engine.SensorPipeline
 import com.ochakov.divemaster.engine.SimulatorProfile
@@ -120,6 +121,8 @@ class DiveService : Service() {
             val rec = DiveSessionRecorder(dao, settings)
             val restored = rec.restore()
             recorder = rec
+            val syncPublisher = DiveSyncPublisher(this@DiveService, dao)
+            launch { syncPublisher.reconcileAll() }
             var eng = buildEngine(settings, restored.tissue, restored.cnsFraction, null)
             engine = eng
             var evaluator = buildEvaluator(settings)
@@ -145,6 +148,9 @@ class DiveService : Service() {
                         val alerts = evaluator.evaluate(eng.displayState, input.sample.timestampMs)
                         if (alerts.isNotEmpty()) {
                             alertSounder?.play(alerts, settings.vibrateEnabled, settings.beepEnabled)
+                        }
+                        if (events.any { it is EngineEvent.DiveEnded }) {
+                            launch { syncPublisher.reconcileAll() }
                         }
                     }
 

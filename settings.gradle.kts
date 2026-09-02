@@ -17,6 +17,7 @@ dependencyResolutionManagement {
 rootProject.name = "DiveMaster"
 
 include(":app")
+include(":mobile")
 include(":core:deco")
 include(":core:data")
 include(":core:engine")

@@ -39,6 +39,7 @@ import com.ochakov.divemaster.data.db.DiveMasterDatabase
 import com.ochakov.divemaster.data.db.SampleEntity
 import com.ochakov.divemaster.data.settings.DiveSettings
 import com.ochakov.divemaster.data.settings.SettingsRepository
+import com.ochakov.divemaster.service.DiveSyncPublisher
 import com.ochakov.divemaster.ui.Units
 import com.ochakov.divemaster.ui.theme.DiveCyan
 import com.ochakov.divemaster.ui.theme.DiveRed
@@ -167,6 +168,8 @@ fun DiveDetailScreen(diveId: Long, onDeleted: () -> Unit) {
                             onClick = {
                                 scope.launch {
                                     dao.deleteDive(diveId)
+                                    // Stop it re-syncing; phone archives keep their copy.
+                                    DiveSyncPublisher(context, dao).unpublish(currentDive.startEpochMs)
                                     onDeleted()
                                 }
                             },
