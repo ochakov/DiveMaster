@@ -16,6 +16,7 @@ import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import com.ochakov.divemaster.service.DiveService
 import com.ochakov.divemaster.ui.dive.DiveScreen
+import com.ochakov.divemaster.ui.log.DiveDetailScreen
 import com.ochakov.divemaster.ui.log.LogScreen
 import com.ochakov.divemaster.ui.probe.ProbeScreen
 import com.ochakov.divemaster.ui.settings.NumberSettingScreen
@@ -91,6 +92,14 @@ fun DiveMasterNavHost() {
         composable("setting/{id}") { entry ->
             NumberSettingScreen(entry.arguments?.getString("id") ?: "")
         }
-        composable("log") { LogScreen() }
+        composable("log") {
+            LogScreen(onOpenDive = { diveId -> navController.navigate("log/$diveId") })
+        }
+        composable("log/{diveId}") { entry ->
+            DiveDetailScreen(
+                diveId = entry.arguments?.getString("diveId")?.toLongOrNull() ?: -1L,
+                onDeleted = { navController.popBackStack() },
+            )
+        }
     }
 }

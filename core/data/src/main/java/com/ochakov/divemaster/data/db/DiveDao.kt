@@ -28,6 +28,9 @@ interface DiveDao {
     @Query("SELECT * FROM dives WHERE endEpochMs = 0")
     suspend fun openDives(): List<DiveEntity>
 
+    @Query("SELECT * FROM dives WHERE id = :diveId")
+    suspend fun dive(diveId: Long): DiveEntity?
+
     @Query("SELECT * FROM samples WHERE diveId = :diveId ORDER BY tOffsetSec")
     suspend fun samplesFor(diveId: Long): List<SampleEntity>
 

@@ -34,7 +34,7 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
 private val LOG_DATE_FMT = DateTimeFormatter.ofPattern("d MMM yyyy · HH:mm")
 
 @Composable
-fun LogScreen(viewModel: LogViewModel = viewModel()) {
+fun LogScreen(onOpenDive: (Long) -> Unit, viewModel: LogViewModel = viewModel()) {
     val dives by viewModel.dives.collectAsState(initial = emptyList())
     val context = LocalContext.current
     val settings by remember { SettingsRepository(context) }.settings.collectAsState(initial = DiveSettings())
@@ -58,7 +58,7 @@ fun LogScreen(viewModel: LogViewModel = viewModel()) {
             } else {
                 items(dives.size) { i ->
                     val dive = dives[i]
-                    Card(onClick = { /* dive detail arrives in Phase 7 */ }) {
+                    Card(onClick = { onOpenDive(dive.id) }) {
                         Text(
                             "${Units.depthWithUnit(dive.maxDepthM, settings.metricUnits)} · ${dive.durationSec / 60} min",
                             style = MaterialTheme.typography.title3,
