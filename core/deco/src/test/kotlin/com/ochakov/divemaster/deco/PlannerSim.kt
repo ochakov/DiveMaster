@@ -19,7 +19,9 @@ object PlannerSim {
     data class Params(
         val gas: Gas,
         val gf: Double,
-        val water: WaterType = WaterType.FRESH,
+        // EN13319: the app's shipping default, and selectable in Subsurface
+        // as "EN13319 (1.020 kg/L)" — the validation grid uses it on both sides.
+        val water: WaterType = WaterType.EN13319,
         val surfaceBar: Double = DepthConverter.STANDARD_ATMOSPHERE_BAR,
         val descentMPerMin: Double = 18.0,
         val ascentMPerMin: Double = 9.0,
