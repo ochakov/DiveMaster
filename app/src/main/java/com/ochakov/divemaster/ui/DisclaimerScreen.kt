@@ -71,7 +71,13 @@ fun DisclaimerScreen() {
             }
             item {
                 Chip(
-                    label = { Text("I understand and accept") },
+                    label = {
+                        Text(
+                            "I understand and accept",
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    },
                     onClick = { scope.launch { repository.setDisclaimerAccepted() } },
                     colors = ChipDefaults.primaryChipColors(),
                     modifier = Modifier.fillMaxWidth(),
