@@ -33,8 +33,14 @@ moment at bottom depth, read "NDL: X min (calc)". Compare against the
 dive screen computes live.
 
 **Method B — planner boundary (runtime NDL with ascent credit):**
-increase the segment duration 1 min at a time; the largest duration with
-no deco stop is the boundary. Segment duration includes the descent.
+increase the segment duration; the largest duration with no deco stop is
+the boundary. Segment duration includes the descent. A dive needs deco
+**only when the plan shows an explicit stop segment** (e.g. "Stay at
+3.0 m for 1:00"); the header line "Stop times: + X /m + Y /min" is
+Subsurface's plan-variations sensitivity display (what one extra meter or
+minute would cost) and appears on clean plans too — it is not a stop
+indicator. Fastest approach: jump straight to our predicted value (expect
+clean) and predicted + 2 (expect a stop line), then narrow if needed.
 Compare against the **Planner NDL** column: within ±2 min (≤5% for cells
 over 100 min), and DiveMaster must **never be more than 1 min more
 permissive** — that direction is a stop-ship bug. ">360" means unlimited.
