@@ -6,3 +6,8 @@ local.properties
 .kotlin/
 captures/
 .DS_Store
+
+# Signing material — never commit
+*.keystore
+*.jks
+keystore.properties
