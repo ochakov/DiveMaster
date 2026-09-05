@@ -44,9 +44,15 @@ jobs:
       - name: Decode release keystore (if configured)
         env:
           KEYSTORE_B64: ${{ secrets.DIVEMASTER_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.DIVEMASTER_KEYSTORE_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            # Tolerate CRLF, line wrapping, stray whitespace, and
+            # certutil-style ----- header/footer lines in the secret.
+            echo "$KEYSTORE_B64" | grep -v '^-----' | tr -d ' \t\r\n' | base64 -d > "$RUNNER_TEMP/release.keystore"
+            # Fail fast and clearly if the keystore or password is wrong.
+            keytool -list -keystore "$RUNNER_TEMP/release.keystore" -storepass "$KEYSTORE_PASSWORD" > /dev/null
+            echo "Keystore decoded and verified"
             echo "DIVEMASTER_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
           fi
 
