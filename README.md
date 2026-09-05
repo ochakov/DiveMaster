@@ -41,6 +41,24 @@ declare only a nominal atmospheric range, and the true saturation depth is
 unknown until tested — verify at staged depths before trusting the depth
 channel (see `docs/phase8-field-validation.md`).
 
+### Native depth sensor (Galaxy Watch Ultra)
+
+The Galaxy Watch Ultra family carries a **dedicated water-depth sensor**
+(Samsung-private vendor type, the one behind Samsung's own depth app).
+DiveMaster detects it automatically and, whenever it delivers data, uses it
+to drive the dive engine instead of barometer-derived depth — a purpose-built
+depth gauge sidesteps the barometer's unknown saturation ceiling entirely.
+The barometer keeps running as the pre-dive surface-pressure reference and
+takes over seamlessly if native samples stop, and a cyan **S-DEPTH** badge on
+the dive screen shows when the native sensor is the one driving. On the
+Ultra 2 the sensor is visible to a normally-installed app and its listener
+registers; Samsung nominally gates these sensors behind a platform
+permission, so whether events actually stream on your install is verified in
+water — the Sensor probe screen shows the sensor's status and a live sample
+counter. (The Ultra's dedicated *water-temperature* type is absent on the
+Ultra 2; temperature comes from Samsung's skin-temperature sensors instead,
+which are body-biased and slow to track water.)
+
 ## Features
 
 - Bühlmann ZH-L16C (1b) decompression model with Erik Baker gradient factors,
@@ -50,6 +68,8 @@ channel (see `docs/phase8-field-validation.md`).
   rate, gas / ppO₂ / CNS — always-on and touch-locked underwater
 - Automatic dive detection with backdated start/end, brief-surfacing merge,
   and crash-safe 1 Hz sample logging
+- Uses Samsung's dedicated water-depth sensor on Galaxy Watch Ultra watches
+  when it delivers data, with seamless barometer fallback
 - Safety stop management: configurable depth window, pause outside it,
   resume on re-entry
 - Vibration alerts: ascent/descent rate, low NDL, deco entry, ppO₂ over
