@@ -1,6 +1,7 @@
 package com.ochakov.divemaster.ui.surface
 
 import android.app.Application
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,8 +13,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -174,25 +177,32 @@ fun SurfaceScreen(
             if (!diving) {
                 item {
                     var waterLockNote by remember { mutableStateOf<String?>(null) }
-                    Chip(
-                        label = { Text("Water lock & dive") },
-                        secondaryLabel = { Text("recording stays on") },
-                        onClick = {
-                            waterLockNote = if (WaterLockController.launch(context)) {
-                                null
-                            } else {
-                                "Swipe down, tap the 💧 water tile before entering the water."
-                            }
-                        },
-                        colors = ChipDefaults.primaryChipColors(),
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.fillMaxWidth(),
-                    )
-                    waterLockNote?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.caption2,
-                            color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                    ) {
+                        Chip(
+                            label = { Text("Water lock & dive") },
+                            secondaryLabel = { Text("recording stays on") },
+                            onClick = {
+                                waterLockNote = if (WaterLockController.launch(context)) {
+                                    null
+                                } else {
+                                    "Swipe down, tap the 💧 water tile before entering the water."
+                                }
+                            },
+                            colors = ChipDefaults.primaryChipColors(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
+                        waterLockNote?.let {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.caption2,
+                                color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
                     }
                 }
                 item {
