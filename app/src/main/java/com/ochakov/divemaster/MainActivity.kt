@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
@@ -45,19 +46,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        // Keep the display on while the app is open (a dive computer shouldn't
+        // sleep after 15 s). Note: this cannot override the forced screen-off
+        // the OS triggers on water contact — only Samsung Water Lock can.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         DiveService.activityVisible = true
-        DiveService.start(this) // ACTION_MONITOR: arms monitoring, clears any dismiss
+        DiveService.start(this) // ACTION_MONITOR: (re)arms monitoring
     }
 
     override fun onStop() {
+        // A screen-off must NOT stop monitoring — otherwise a dive is missed the
+        // instant the watch gets wet. On Wear the activity may be FINISHED on a
+        // plain timeout, so isFinishing can't distinguish "user left" from
+        // "screen slept". Monitoring instead stands down only via the service's
+        // surface idle-timeout, so it always survives water entry.
         DiveService.activityVisible = false
-        // Only tear monitoring down if the user actually left the app. A plain
-        // screen-off (including the forced sleep water contact triggers) must
-        // NOT stop the service, or dives are missed the instant the watch gets
-        // wet. isFinishing is true on swipe-dismiss / back-out.
-        if (isFinishing && DiveService.serviceRunning.value) {
-            DiveService.start(this, DiveService.ACTION_DISMISS)
-        }
         super.onStop()
     }
 }
