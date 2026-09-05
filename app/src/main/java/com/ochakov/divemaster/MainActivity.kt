@@ -32,6 +32,11 @@ import com.ochakov.divemaster.ui.theme.DiveMasterTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Button-glance underwater: when the service relaunches us on dive start,
+        // or the diver presses the physical button, wake straight to the dive
+        // screen over the keyguard instead of the watch face.
+        setShowWhenLocked(true)
+        setTurnScreenOn(true)
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {

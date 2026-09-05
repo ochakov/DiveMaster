@@ -75,7 +75,6 @@ class DiveService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var simJob: Job? = null
     private var alertSounder: AlertSounder? = null
-    private var waterLock: WaterLockController? = null
     private var diveModeActive = false
 
     @Volatile private var lastSampleWallMs = 0L
@@ -137,7 +136,6 @@ class DiveService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification("Surface monitoring"))
         serviceRunning.value = true
         alertSounder = AlertSounder(this)
-        waterLock = WaterLockController(this)
         lastForegroundWallMs = System.currentTimeMillis()
         // Held for the whole monitoring lifetime (not just during a dive): a
         // watch that sleeps its screen on water contact would otherwise suspend
@@ -323,8 +321,6 @@ class DiveService : Service() {
         samsungSource = null
         nativeDepthDriving.value = false
         simJob?.cancel()
-        waterLock?.disengage()
-        waterLock = null
         val eng = engine
         val rec = recorder
         if (eng != null && rec != null) runBlocking { rec.persistTissueNow(eng) }
@@ -422,7 +418,6 @@ class DiveService : Service() {
         if (diving && !diveModeActive) {
             diveModeActive = true
             acquireMonitorWakeLock() // ensure held even if a long idle had released it
-            waterLock?.engage() // best-effort: keep screen usable + touch off underwater
             notify("Dive in progress")
             if (!activityVisible) {
                 // Best effort: recent-foreground grace often allows this; when the
@@ -433,7 +428,6 @@ class DiveService : Service() {
             }
         } else if (!diving && diveModeActive) {
             diveModeActive = false
-            waterLock?.disengage()
             notify(if (simulatorRunning.value) "Simulated dive running" else "Surface monitoring")
         }
     }
