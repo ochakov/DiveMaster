@@ -64,7 +64,7 @@ class DiveEngineTest {
     fun `a splash shallower than the start threshold never starts a dive`() {
         val h = Harness()
         h.feed(0.0, 10)
-        h.feed(1.0, 120) // below 1.2 m start threshold
+        h.feed(0.2, 120) // below the 0.3 m start threshold
         h.feed(0.0, 10)
         assertTrue(h.eventsOf<EngineEvent.DiveStarted>().isEmpty())
         assertEquals(DivePhase.SURFACE, h.engine.displayState.phase)
@@ -270,6 +270,18 @@ class DiveEngineTest {
         h.feed(15.0, 10) // next dive, freshly armed
         assertEquals(SafetyStopState.PENDING, h.engine.displayState.safetyStop)
         assertEquals(180, h.engine.displayState.safetyStopRemainingSec)
+    }
+
+    @Test
+    fun `sustained half-metre swim triggers and holds with production defaults`() {
+        // Ev's real-world case: finning to the entry at ~0.5 m for minutes must
+        // register as a dive and keep reading ~0.5 m, not re-zero.
+        val h = Harness()
+        h.feed(0.0, 10)
+        h.feed(0.5, 240)
+        assertEquals(1, h.eventsOf<EngineEvent.DiveStarted>().size)
+        assertEquals(DivePhase.DIVING, h.engine.displayState.phase)
+        assertEquals(0.5, h.engine.displayState.depthM, 0.05)
     }
 
     @Test

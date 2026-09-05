@@ -16,9 +16,9 @@ A standalone Wear OS scuba dive computer (single gas: air/nitrox). Target device
 | Platform | minSdk 30 (Wear OS 3+), compileSdk 35, Kotlin, package `com.ochakov.divemaster` |
 | Storage | Room (dives + 1 Hz samples + persistent tissue state), DataStore for settings |
 | Units | Metric default with imperial toggle |
-| Dev | Hidden simulator mode (5-tap Simulator row) feeding synthetic pressure profiles; **also shallows real-water detection to 0.5 m start / 0.3 m end for bench testing** (`buildConfig` in DiveService). Production (dev off) keeps the locked 1.2 m/0.8 m rule. |
+| Dev | Hidden simulator mode (5-tap Simulator row) feeding synthetic pressure profiles. (Detection is shallow enough — 0.3 m — for bench testing in production, so there's no dev-only shallowing.) |
 
-Dive detection: start at depth ≥ 1.2 m held 3 s (clock backdated to submersion); end after < 0.8 m held 60 s; re-descend within 60 s continues the same dive; dives < 60 s discarded. Alert defaults: ascent > 10 m/min, descent > 20 m/min, low NDL < 5 min.
+Dive detection (**revised by Ev 2026-09-06** — shallower/faster, matching real dive computers): start at depth ≥ **0.3 m** held 3 s (clock backdated to submersion at 0.1 m); end after < **0.2 m** held 60 s; re-descend within 60 s continues the same dive; dives < 60 s discarded. The surface-pressure reference freezes once depth passes **0.2 m** (`surfaceRefFreezeDepthM`) — this is what stops a sustained shallow swim (finning to entry at ~0.5 m for minutes) from re-zeroing the reference, the real reason the old 1.2 m/1.0 m-freeze design failed in water. All in `DiveEngineConfig` defaults; production and bench testing share them (no dev shallowing). Alert defaults: ascent > 10 m/min, descent > 20 m/min, low NDL < 5 min.
 
 Safety stop (Ev's spec, 2026-08-31): arms once the dive passes 10 m; countdown (default 3 min) runs only inside a configurable depth window (default 4–6 m); leaving the window in either direction **pauses** the countdown (no reset, even on deep re-descent — deliberate, differs from computers that restart the stop); resumes on re-entry. Engine states NONE/PENDING/ACTIVE/PAUSED/DONE; dive screen shows a green countdown pill when active, amber + direction hint when paused, checkmark when done. Stop-complete/missed vibration belongs to Phase 6.
 

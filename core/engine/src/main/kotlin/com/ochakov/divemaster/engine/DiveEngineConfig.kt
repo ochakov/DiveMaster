@@ -14,12 +14,18 @@ data class DiveEngineConfig(
     val waterType: WaterType,
     val gas: Gas,
     val gradientFactors: GradientFactors,
-    /** Dive confirmed at this depth... */
-    val startDepthM: Double = 1.2,
+    /**
+     * Dive confirmed at this depth, held [startHoldSec]. Kept shallow (0.3 m)
+     * so dive mode engages almost immediately — like a dedicated dive computer
+     * — and, crucially, freezes the surface reference before a sustained
+     * shallow swim (finning to the entry at ~0.5 m for minutes) can drift it.
+     * Brief accidental dips are still filtered by [minDiveDurationSec].
+     */
+    val startDepthM: Double = 0.3,
     /** ...held this long. */
     val startHoldSec: Int = 3,
     /** Dive ends after rising above this depth... */
-    val endDepthM: Double = 0.8,
+    val endDepthM: Double = 0.2,
     /** ...for this long (re-descending sooner continues the same dive). */
     val endHoldSec: Int = 60,
     /** Shorter dives are discarded. */
@@ -32,9 +38,9 @@ data class DiveEngineConfig(
     /** The stop arms once the dive has been at least this deep. */
     val safetyStopRequiredBelowM: Double = 10.0,
     /** Depth at which the diver counts as submerged (dive clock backdates to here). */
-    val submersionEpsilonM: Double = 0.3,
+    val submersionEpsilonM: Double = 0.1,
     /** Below this depth the diver is assumed breathing surface air, not the configured gas. */
-    val gasSwitchDepthM: Double = 0.5,
+    val gasSwitchDepthM: Double = 0.15,
     /** Half-life of the rolling surface-pressure reference. */
     val surfaceEmaHalfLifeSec: Double = 90.0,
     /**
@@ -42,7 +48,7 @@ data class DiveEngineConfig(
      * exceeds this, so it can't chase a real descent back to zero. Must sit
      * below the dive-start depth; kept well above surface chop for production.
      */
-    val surfaceRefFreezeDepthM: Double = 1.0,
+    val surfaceRefFreezeDepthM: Double = 0.2,
     /** Samples shallower than this are excluded from the average-depth statistic. */
     val avgDepthMinM: Double = 0.3,
     /** Window for the vertical-speed estimate. */
