@@ -33,6 +33,7 @@ import androidx.wear.compose.material.TimeText
 import com.ochakov.divemaster.service.SamsungDepthSource
 import com.ochakov.divemaster.ui.theme.DiveAmber
 import com.ochakov.divemaster.ui.theme.DiveGreen
+import com.ochakov.divemaster.ui.theme.DiveRed
 
 /**
  * Phase 0 hardware probe. Answers, on real hardware, the questions the whole
@@ -62,6 +63,10 @@ fun ProbeScreen() {
     var nativeDepthAvailable by remember { mutableStateOf(false) }
     var nativeDepthM by remember { mutableStateOf<Double?>(null) }
     var nativeWaterTempC by remember { mutableStateOf<Double?>(null) }
+    var nativeDepthSamples by remember { mutableStateOf(0) }
+    var nativeDepthLabel by remember { mutableStateOf<String?>(null) }
+    var nativeDepthRegistered by remember { mutableStateOf(false) }
+    var nativeTempPresent by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -128,11 +133,17 @@ fun ProbeScreen() {
 
         val samsungSource = SamsungDepthSource(
             sensorManager,
-            onLiveSample = { _, depthM -> nativeDepthM = depthM },
+            onLiveSample = { _, depthM ->
+                nativeDepthM = depthM
+                nativeDepthSamples++
+            },
             onWaterTemp = { celsius -> nativeWaterTempC = celsius },
         )
         nativeDepthAvailable = samsungSource.available
+        nativeTempPresent = samsungSource.tempAvailable
+        nativeDepthLabel = samsungSource.depthSensorLabel
         samsungSource.start()
+        nativeDepthRegistered = samsungSource.depthRegistered
 
         onDispose {
             sensorManager.unregisterListener(pressureListener)
@@ -239,23 +250,51 @@ fun ProbeScreen() {
             if (nativeDepthAvailable) {
                 item {
                     Text(
-                        "Available — dedicated depth sensor will drive dives",
+                        "Sensor visible — drives dives once it streams",
                         style = MaterialTheme.typography.caption1,
                         color = DiveGreen,
                         textAlign = TextAlign.Center,
                     )
                 }
+                nativeDepthLabel?.let { label ->
+                    item {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.caption2,
+                            color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
                 item {
                     Text(
-                        nativeDepthM?.let { "Depth %.2f m".format(it) } ?: "Depth — (dry)",
-                        style = MaterialTheme.typography.title2,
-                        color = MaterialTheme.colors.primary,
+                        if (nativeDepthRegistered) "Listener registered ✓" else "Listener REJECTED — delivery gated",
+                        style = MaterialTheme.typography.caption2,
+                        color = if (nativeDepthRegistered) DiveGreen else DiveRed,
                     )
                 }
                 item {
                     Text(
-                        nativeWaterTempC?.let { "Water %.1f °C".format(it) } ?: "Water temp —",
-                        style = MaterialTheme.typography.caption1,
+                        if (nativeDepthSamples == 0) {
+                            "No samples yet — streams only in water; dunk to test"
+                        } else {
+                            "Depth %.2f m · %d samples".format(nativeDepthM ?: 0.0, nativeDepthSamples)
+                        },
+                        style = MaterialTheme.typography.title3,
+                        color = MaterialTheme.colors.primary,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                item {
+                    Text(
+                        if (nativeTempPresent) {
+                            nativeWaterTempC?.let { "Water %.1f °C".format(it) } ?: "Water temp —"
+                        } else {
+                            "Water-temp sensor (69686) not present — skin sensors cover temperature"
+                        },
+                        style = MaterialTheme.typography.caption2,
+                        color = if (nativeTempPresent) MaterialTheme.colors.onBackground else DiveAmber,
+                        textAlign = TextAlign.Center,
                     )
                 }
             } else {

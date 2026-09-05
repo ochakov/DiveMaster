@@ -35,10 +35,21 @@ class SamsungDepthSource(
     private val tempSensor: Sensor? =
         runCatching { sensorManager.getDefaultSensor(TYPE_WATER_TEMPERATURE) }.getOrNull()
 
+    /** The sensor is visible; whether it delivers events is only provable in water. */
     val available: Boolean get() = depthSensor != null
 
+    val tempAvailable: Boolean get() = tempSensor != null
+
+    val depthSensorLabel: String? get() = depthSensor?.let { "${it.name} (type ${it.type})" }
+
+    /** False when the framework rejected the listener (a delivery-side permission gate). */
+    var depthRegistered = false
+        private set
+
     fun start() {
-        depthSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+        depthRegistered = depthSensor?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        } ?: false
         tempSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
     }
 
