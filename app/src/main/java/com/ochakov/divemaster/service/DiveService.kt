@@ -74,8 +74,11 @@ class DiveService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var simJob: Job? = null
     private var alertSounder: AlertSounder? = null
+    private var waterLock: WaterLockController? = null
+    private var diveModeActive = false
 
     @Volatile private var lastSampleWallMs = 0L
+    @Volatile private var lastForegroundWallMs = 0L
     private var batteryWarned = false
 
     @Volatile private var ambientTempC: Double? = null
@@ -132,6 +135,12 @@ class DiveService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification("Surface monitoring"))
         serviceRunning.value = true
         alertSounder = AlertSounder(this)
+        waterLock = WaterLockController(this)
+        lastForegroundWallMs = System.currentTimeMillis()
+        // Held for the whole monitoring lifetime (not just during a dive): a
+        // watch that sleeps its screen on water contact would otherwise suspend
+        // the CPU and stop barometer sampling before a dive is ever detected.
+        acquireMonitorWakeLock()
         val dao = DiveMasterDatabase.get(this).diveDao()
         scope.launch {
             val repository = SettingsRepository(this@DiveService)
@@ -241,6 +250,18 @@ class DiveService : Service() {
                     }
                 }
                 if (!diving) batteryWarned = false
+                if (diving) lastForegroundWallMs = now
+
+                // Battery guard: if the user left monitoring running (auto-armed
+                // while the app was open) and then walked away — screen off, not
+                // diving — stand down after a long idle rather than holding the
+                // wake lock forever.
+                if (!diving && simJob == null && !activityVisible &&
+                    now - lastForegroundWallMs > MONITOR_IDLE_STOP_MS
+                ) {
+                    stopSelf()
+                    return@launch
+                }
             }
         }
     }
@@ -260,6 +281,18 @@ class DiveService : Service() {
             ACTION_START_SIM -> startSimulation()
             ACTION_STOP_SIM -> stopSimulation()
             ACTION_MAYBE_STOP -> maybeStop()
+            ACTION_DISMISS -> {
+                // The user actually left the app (swiped/backed out) — the only
+                // reason to tear monitoring down. A mere screen-off does NOT
+                // send this, so water-induced sleep keeps monitoring alive.
+                userDismissed = true
+                maybeStop()
+            }
+            else -> { // ACTION_MONITOR (app opened / foregrounded)
+                userDismissed = false
+                lastForegroundWallMs = System.currentTimeMillis()
+                acquireMonitorWakeLock()
+            }
         }
         return START_STICKY
     }
@@ -271,6 +304,8 @@ class DiveService : Service() {
         samsungSource = null
         nativeDepthDriving.value = false
         simJob?.cancel()
+        waterLock?.disengage()
+        waterLock = null
         val eng = engine
         val rec = recorder
         if (eng != null && rec != null) runBlocking { rec.persistTissueNow(eng) }
@@ -352,14 +387,23 @@ class DiveService : Service() {
             .forEach { sm.registerListener(tempListener, it, SensorManager.SENSOR_DELAY_NORMAL) }
     }
 
-    private fun updateDiveMode(diving: Boolean) {
-        if (diving && wakeLock == null) {
+    private fun acquireMonitorWakeLock() {
+        if (wakeLock == null) {
             wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
-                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DiveMaster:dive")
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DiveMaster:monitor")
                 .apply {
                     setReferenceCounted(false)
-                    acquire(MAX_DIVE_WAKELOCK_MS)
+                    acquire(MAX_WAKELOCK_MS)
                 }
+        }
+    }
+
+    private fun updateDiveMode(diving: Boolean) {
+        if (diving) lastForegroundWallMs = System.currentTimeMillis() // never idle-stop mid-dive
+        if (diving && !diveModeActive) {
+            diveModeActive = true
+            acquireMonitorWakeLock() // ensure held even if a long idle had released it
+            waterLock?.engage() // best-effort: keep screen usable + touch off underwater
             notify("Dive in progress")
             if (!activityVisible) {
                 // Best effort: recent-foreground grace often allows this; when the
@@ -368,9 +412,9 @@ class DiveService : Service() {
                     startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             }
-        } else if (!diving && wakeLock != null) {
-            wakeLock?.release()
-            wakeLock = null
+        } else if (!diving && diveModeActive) {
+            diveModeActive = false
+            waterLock?.disengage()
             notify(if (simulatorRunning.value) "Simulated dive running" else "Surface monitoring")
             maybeStop()
         }
@@ -420,7 +464,12 @@ class DiveService : Service() {
 
     private fun maybeStop() {
         val diving = engine?.displayState?.phase == DivePhase.DIVING
-        if (!activityVisible && !diving && simJob == null) stopSelf()
+        // Never tear down mid-dive or mid-sim. Otherwise stop only when the user
+        // actually dismissed the app — NOT merely because the screen slept
+        // (which is exactly what water contact triggers). A long surface idle is
+        // handled separately by the watchdog.
+        if (diving || simJob != null) return
+        if (userDismissed) stopSelf()
     }
 
     private fun createNotificationChannel() {
@@ -454,7 +503,8 @@ class DiveService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val SIM_TIME_SCALE = 4L
         private const val SIM_WATER_TEMP_C = 24.0
-        private const val MAX_DIVE_WAKELOCK_MS = 6L * 60 * 60 * 1000
+        private const val MAX_WAKELOCK_MS = 6L * 60 * 60 * 1000
+        private const val MONITOR_IDLE_STOP_MS = 20L * 60 * 1000
         private const val SENSOR_STALE_MS = 5_000L
         private const val LOW_BATTERY_PCT = 15
         private const val NATIVE_DEPTH_FRESH_MS = 3_000L
@@ -464,6 +514,7 @@ class DiveService : Service() {
         const val ACTION_START_SIM = "com.ochakov.divemaster.START_SIM"
         const val ACTION_STOP_SIM = "com.ochakov.divemaster.STOP_SIM"
         const val ACTION_MAYBE_STOP = "com.ochakov.divemaster.MAYBE_STOP"
+        const val ACTION_DISMISS = "com.ochakov.divemaster.DISMISS"
 
         val displayState = MutableStateFlow<DiveDisplayState?>(null)
         val simulatorRunning = MutableStateFlow(false)
@@ -479,6 +530,10 @@ class DiveService : Service() {
 
         @Volatile
         var activityVisible = false
+
+        /** Set when the user actually leaves the app; the only trigger to stop monitoring. */
+        @Volatile
+        var userDismissed = false
 
         fun start(context: Context, action: String = ACTION_MONITOR) {
             context.startForegroundService(Intent(context, DiveService::class.java).setAction(action))

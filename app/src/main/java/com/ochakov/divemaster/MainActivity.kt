@@ -46,13 +46,17 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         DiveService.activityVisible = true
-        DiveService.start(this)
+        DiveService.start(this) // ACTION_MONITOR: arms monitoring, clears any dismiss
     }
 
     override fun onStop() {
         DiveService.activityVisible = false
-        if (DiveService.serviceRunning.value) {
-            DiveService.start(this, DiveService.ACTION_MAYBE_STOP)
+        // Only tear monitoring down if the user actually left the app. A plain
+        // screen-off (including the forced sleep water contact triggers) must
+        // NOT stop the service, or dives are missed the instant the watch gets
+        // wet. isFinishing is true on swipe-dismiss / back-out.
+        if (isFinishing && DiveService.serviceRunning.value) {
+            DiveService.start(this, DiveService.ACTION_DISMISS)
         }
         super.onStop()
     }
