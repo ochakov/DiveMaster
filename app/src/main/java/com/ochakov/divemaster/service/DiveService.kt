@@ -80,6 +80,7 @@ class DiveService : Service() {
 
     @Volatile private var lastSampleWallMs = 0L
     @Volatile private var lastForegroundWallMs = 0L
+    @Volatile private var lastDepthLogMs = 0L
     private var batteryWarned = false
 
     @Volatile private var ambientTempC: Double? = null
@@ -173,6 +174,29 @@ class DiveService : Service() {
                 val alerts = evaluator.evaluate(eng.displayState, sample.timestampMs)
                 if (alerts.isNotEmpty()) {
                     alertSounder?.play(alerts, settings.vibrateEnabled, settings.beepEnabled)
+                }
+                // Diagnostics: prove headless sampling/detection works even with
+                // the screen forced off in water. Events always logged; depth
+                // throttled to ~5 s so logcat stays readable.
+                for (event in events) {
+                    when (event) {
+                        is EngineEvent.DiveStarted -> Log.i(TAG, "DIVE STARTED (source=${if (fromNativeDepth) "native" else "baro"})")
+                        is EngineEvent.DiveEnded -> Log.i(TAG, "DIVE ENDED: ${event.durationSec}s max=%.1fm".format(event.maxDepthM))
+                        EngineEvent.DiveDiscarded -> Log.i(TAG, "dive discarded (<60 s)")
+                        else -> Unit
+                    }
+                }
+                val nowWall = System.currentTimeMillis()
+                if (nowWall - lastDepthLogMs >= 5_000) {
+                    lastDepthLogMs = nowWall
+                    Log.d(
+                        TAG,
+                        "depth=%.2fm phase=%s src=%s screenOff-ok".format(
+                            eng.displayState.depthM,
+                            eng.displayState.phase,
+                            if (fromNativeDepth) "native" else "baro",
+                        ),
+                    )
                 }
                 if (events.any { it is EngineEvent.DiveEnded }) {
                     scope.launch { syncPublisher.reconcileAll() }
