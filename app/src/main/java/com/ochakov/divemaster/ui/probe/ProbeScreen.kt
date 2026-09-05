@@ -30,6 +30,7 @@ import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
+import com.ochakov.divemaster.service.SamsungDepthSource
 import com.ochakov.divemaster.ui.theme.DiveAmber
 import com.ochakov.divemaster.ui.theme.DiveGreen
 
@@ -58,6 +59,9 @@ fun ProbeScreen() {
     var vendorTempNames by remember { mutableStateOf(listOf<String>()) }
     val vendorTemps = remember { mutableStateMapOf<String, Float>() }
     var allSensors by remember { mutableStateOf(listOf<String>()) }
+    var nativeDepthAvailable by remember { mutableStateOf(false) }
+    var nativeDepthM by remember { mutableStateOf<Double?>(null) }
+    var nativeWaterTempC by remember { mutableStateOf<Double?>(null) }
 
     DisposableEffect(Unit) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -122,10 +126,19 @@ fun ProbeScreen() {
         }
         vendorSensors.forEach { sensorManager.registerListener(vendorListener, it, SensorManager.SENSOR_DELAY_NORMAL) }
 
+        val samsungSource = SamsungDepthSource(
+            sensorManager,
+            onLiveSample = { _, depthM -> nativeDepthM = depthM },
+            onWaterTemp = { celsius -> nativeWaterTempC = celsius },
+        )
+        nativeDepthAvailable = samsungSource.available
+        samsungSource.start()
+
         onDispose {
             sensorManager.unregisterListener(pressureListener)
             sensorManager.unregisterListener(ambientListener)
             sensorManager.unregisterListener(vendorListener)
+            samsungSource.stop()
         }
     }
 
@@ -217,6 +230,41 @@ fun ProbeScreen() {
                             }
                         },
                         colors = ChipDefaults.secondaryChipColors(),
+                    )
+                }
+            }
+
+            item { Spacer(Modifier.height(8.dp)) }
+            item { Text("SAMSUNG DEPTH SENSOR", style = MaterialTheme.typography.caption2, color = MaterialTheme.colors.secondary) }
+            if (nativeDepthAvailable) {
+                item {
+                    Text(
+                        "Available — dedicated depth sensor will drive dives",
+                        style = MaterialTheme.typography.caption1,
+                        color = DiveGreen,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                item {
+                    Text(
+                        nativeDepthM?.let { "Depth %.2f m".format(it) } ?: "Depth — (dry)",
+                        style = MaterialTheme.typography.title2,
+                        color = MaterialTheme.colors.primary,
+                    )
+                }
+                item {
+                    Text(
+                        nativeWaterTempC?.let { "Water %.1f °C".format(it) } ?: "Water temp —",
+                        style = MaterialTheme.typography.caption1,
+                    )
+                }
+            } else {
+                item {
+                    Text(
+                        "Not accessible on this install — Samsung gates it behind SSENSOR (platform-signed/privileged apps only). Barometer will be used.",
+                        style = MaterialTheme.typography.caption2,
+                        color = DiveAmber,
+                        textAlign = TextAlign.Center,
                     )
                 }
             }

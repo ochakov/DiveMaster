@@ -110,12 +110,16 @@ private fun DiveContent(state: DiveDisplayState, metric: Boolean) {
     ) {
         val stale by DiveService.sensorStale.collectAsState()
         val battery by DiveService.batteryPct.collectAsState()
+        val nativeDepth by DiveService.nativeDepthDriving.collectAsState()
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
         ) {
             if (state.simulated) {
                 Text("SIM", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DiveAmber)
+            }
+            if (nativeDepth && !state.simulated) {
+                Text("S-DEPTH", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DiveCyan)
             }
             if (stale) {
                 Text("SENSOR", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DiveRed)

@@ -58,6 +58,7 @@ class DiveService : Service() {
 
     private sealed interface Input {
         data class Sample(val sample: PressureSample) : Input
+        data class NativeDepth(val timestampMs: Long, val depthM: Double) : Input
         data object Abort : Input
         data class SettingsChanged(val settings: DiveSettings) : Input
     }
@@ -65,6 +66,8 @@ class DiveService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val inputs = Channel<Input>(Channel.UNLIMITED)
     private val pipeline = SensorPipeline()
+    private val nativeDepthPipeline = SensorPipeline()
+    private var samsungSource: SamsungDepthSource? = null
     @Volatile private var engine: DiveEngine? = null
     private var recorder: DiveSessionRecorder? = null
     private var sensorManager: SensorManager? = null
@@ -78,13 +81,28 @@ class DiveService : Service() {
     @Volatile private var ambientTempC: Double? = null
     @Volatile private var skinTempC: Double? = null
     @Volatile private var otherTempC: Double? = null
+    @Volatile private var lastNativeDepthWallMs = 0L
+    @Volatile private var waterTempC: Double? = null
+    @Volatile private var waterTempWallMs = 0L
 
-    /** Ambient sensor first, then skin temperature, then any other vendor source. */
-    private fun currentTempC(): Double? = ambientTempC ?: skinTempC ?: otherTempC
+    /**
+     * Samsung's real water thermometer first (while fresh), then ambient,
+     * then skin temperature, then any other vendor source.
+     */
+    private fun currentTempC(): Double? {
+        val water = waterTempC
+        if (water != null && System.currentTimeMillis() - waterTempWallMs < WATER_TEMP_FRESH_MS) {
+            return water
+        }
+        return ambientTempC ?: skinTempC ?: otherTempC
+    }
 
     private val pressureListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             if (simulatorRunning.value) return // the simulator owns the stream
+            if (System.currentTimeMillis() - lastNativeDepthWallMs < NATIVE_DEPTH_FRESH_MS) {
+                return // Samsung's dedicated depth sensor owns the stream
+            }
             val bar = event.values[0].toDouble() * DepthConverter.BAR_PER_HPA
             val sample = pipeline.onRaw(System.currentTimeMillis(), bar) ?: return
             inputs.trySend(Input.Sample(sample.copy(tempC = currentTempC())))
@@ -127,6 +145,7 @@ class DiveService : Service() {
             engine = eng
             var evaluator = buildEvaluator(settings)
             var pendingSettings: DiveSettings? = null
+            var converter = DepthConverter(settings.waterType)
 
             // Settings edits arrive through the same channel as samples so the
             // engine is only ever touched from this coroutine.
@@ -134,23 +153,38 @@ class DiveService : Service() {
                 repository.settings.collect { inputs.trySend(Input.SettingsChanged(it)) }
             }
 
+            suspend fun processEngineSample(sample: PressureSample, fromNativeDepth: Boolean) {
+                lastSampleWallMs = System.currentTimeMillis()
+                nativeDepthDriving.value = fromNativeDepth
+                val events = eng.onSample(sample)
+                rec.handle(events, eng, System.currentTimeMillis())
+                displayState.value = eng.displayState.copy(simulated = simulatorRunning.value)
+                updateDiveMode(eng.displayState.phase == DivePhase.DIVING)
+                val alerts = evaluator.evaluate(eng.displayState, sample.timestampMs)
+                if (alerts.isNotEmpty()) {
+                    alertSounder?.play(alerts, settings.vibrateEnabled, settings.beepEnabled)
+                }
+                if (events.any { it is EngineEvent.DiveEnded }) {
+                    scope.launch { syncPublisher.reconcileAll() }
+                }
+            }
+
             for (input in inputs) {
                 when (input) {
                     is Input.SettingsChanged ->
                         if (input.settings != settings) pendingSettings = input.settings
 
-                    is Input.Sample -> {
-                        lastSampleWallMs = System.currentTimeMillis()
-                        val events = eng.onSample(input.sample)
-                        rec.handle(events, eng, System.currentTimeMillis())
-                        displayState.value = eng.displayState.copy(simulated = simulatorRunning.value)
-                        updateDiveMode(eng.displayState.phase == DivePhase.DIVING)
-                        val alerts = evaluator.evaluate(eng.displayState, input.sample.timestampMs)
-                        if (alerts.isNotEmpty()) {
-                            alertSounder?.play(alerts, settings.vibrateEnabled, settings.beepEnabled)
-                        }
-                        if (events.any { it is EngineEvent.DiveEnded }) {
-                            launch { syncPublisher.reconcileAll() }
+                    is Input.Sample -> processEngineSample(input.sample, fromNativeDepth = false)
+
+                    is Input.NativeDepth -> {
+                        // Samsung reports depth in meters; synthesize ambient
+                        // pressure from the engine's own surface reference so
+                        // engine depth equals sensor depth exactly, and every
+                        // downstream consumer stays unchanged.
+                        val bar = eng.displayState.surfacePressureBar +
+                            input.depthM * converter.barPerMeter
+                        nativeDepthPipeline.onRaw(input.timestampMs, bar)?.let { sample ->
+                            processEngineSample(sample.copy(tempC = currentTempC()), fromNativeDepth = true)
                         }
                     }
 
@@ -171,6 +205,7 @@ class DiveService : Service() {
                     eng = buildEngine(settings, eng.tissue, eng.cnsFraction, eng.displayState.surfacePressureBar)
                     engine = eng
                     evaluator = buildEvaluator(settings)
+                    converter = DepthConverter(settings.waterType)
                     rec.updateSettings(settings)
                 }
             }
@@ -232,6 +267,9 @@ class DiveService : Service() {
     override fun onDestroy() {
         sensorManager?.unregisterListener(pressureListener)
         sensorManager?.unregisterListener(tempListener)
+        samsungSource?.stop()
+        samsungSource = null
+        nativeDepthDriving.value = false
         simJob?.cancel()
         val eng = engine
         val rec = recorder
@@ -281,6 +319,24 @@ class DiveService : Service() {
     private fun registerSensors() {
         val sm = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         sensorManager = sm
+        // Samsung private depth/water-temp sensors: present only on
+        // platform-signed/privileged installs; null otherwise → barometer path.
+        samsungSource = SamsungDepthSource(
+            sm,
+            onLiveSample = { timestampMs, depthM ->
+                if (!simulatorRunning.value) {
+                    lastNativeDepthWallMs = System.currentTimeMillis()
+                    inputs.trySend(Input.NativeDepth(timestampMs, depthM))
+                }
+            },
+            onWaterTemp = { celsius ->
+                waterTempC = celsius
+                waterTempWallMs = System.currentTimeMillis()
+            },
+        ).also {
+            nativeDepthAvailable.value = it.available
+            it.start()
+        }
         sm.getDefaultSensor(Sensor.TYPE_PRESSURE)?.let {
             sm.registerListener(pressureListener, it, SensorManager.SENSOR_DELAY_FASTEST)
         }
@@ -401,6 +457,8 @@ class DiveService : Service() {
         private const val MAX_DIVE_WAKELOCK_MS = 6L * 60 * 60 * 1000
         private const val SENSOR_STALE_MS = 5_000L
         private const val LOW_BATTERY_PCT = 15
+        private const val NATIVE_DEPTH_FRESH_MS = 3_000L
+        private const val WATER_TEMP_FRESH_MS = 60_000L
 
         const val ACTION_MONITOR = "com.ochakov.divemaster.MONITOR"
         const val ACTION_START_SIM = "com.ochakov.divemaster.START_SIM"
@@ -412,6 +470,12 @@ class DiveService : Service() {
         val serviceRunning = MutableStateFlow(false)
         val sensorStale = MutableStateFlow(false)
         val batteryPct = MutableStateFlow<Int?>(null)
+
+        /** Samsung private depth sensor readable on this install. */
+        val nativeDepthAvailable = MutableStateFlow(false)
+
+        /** True while the native depth sensor (not the barometer) feeds the engine. */
+        val nativeDepthDriving = MutableStateFlow(false)
 
         @Volatile
         var activityVisible = false
