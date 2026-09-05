@@ -81,7 +81,7 @@ class DiveEngine(
             val ref = surfaceEmaBar
             if (ref == null) {
                 surfaceEmaBar = p
-            } else if (dtSec > 0.0 && converter.depthMeters(p, ref) < 1.0) {
+            } else if (dtSec > 0.0 && converter.depthMeters(p, ref) < config.surfaceRefFreezeDepthM) {
                 val alpha = 1.0 - 2.0.pow(-dtSec / config.surfaceEmaHalfLifeSec)
                 surfaceEmaBar = ref + (p - ref) * alpha
             }

@@ -362,6 +362,9 @@ class DiveService : Service() {
                 endDepthM = 0.3,
                 submersionEpsilonM = 0.15,
                 gasSwitchDepthM = 0.2,
+                // Must sit below the 0.5 m test depth, or the surface reference
+                // re-zeroes a sustained shallow dunk (as watch4.log showed).
+                surfaceRefFreezeDepthM = 0.25,
             )
         } else {
             base

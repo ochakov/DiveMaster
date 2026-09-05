@@ -37,6 +37,12 @@ data class DiveEngineConfig(
     val gasSwitchDepthM: Double = 0.5,
     /** Half-life of the rolling surface-pressure reference. */
     val surfaceEmaHalfLifeSec: Double = 90.0,
+    /**
+     * The surface reference stops tracking (freezes) once measured depth
+     * exceeds this, so it can't chase a real descent back to zero. Must sit
+     * below the dive-start depth; kept well above surface chop for production.
+     */
+    val surfaceRefFreezeDepthM: Double = 1.0,
     /** Samples shallower than this are excluded from the average-depth statistic. */
     val avgDepthMinM: Double = 0.3,
     /** Window for the vertical-speed estimate. */

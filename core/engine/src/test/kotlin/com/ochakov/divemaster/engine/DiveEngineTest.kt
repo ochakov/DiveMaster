@@ -273,6 +273,30 @@ class DiveEngineTest {
     }
 
     @Test
+    fun `low freeze threshold keeps a sustained shallow dunk from re-zeroing`() {
+        val surface = DepthConverter.STANDARD_ATMOSPHERE_BAR
+        val converter = DepthConverter(WaterType.EN13319)
+        val engine = DiveEngine(
+            DiveEngineConfig(
+                WaterType.EN13319, Gas.AIR, GradientFactors.OFF,
+                startDepthM = 0.5, endDepthM = 0.3, submersionEpsilonM = 0.15,
+                surfaceRefFreezeDepthM = 0.25,
+            ),
+            TissueState.saturatedAir(surface), 0.0, surface,
+        )
+        var ts = 0L
+        val events = mutableListOf<EngineEvent>()
+        repeat(10) { ts += 1000; events += engine.onSample(PressureSample(ts, converter.ambientBar(0.0, surface))) }
+        // A steady 0.53 m held four minutes — long past the 90 s reference half-life.
+        repeat(240) { ts += 1000; events += engine.onSample(PressureSample(ts, converter.ambientBar(0.53, surface))) }
+
+        assertTrue("dive should trigger", events.any { it is EngineEvent.DiveStarted })
+        // The reference froze at 0.25 m, so a steady dunk still reads ~0.53 m
+        // four minutes in rather than drifting back to zero.
+        assertEquals(0.53, engine.displayState.depthM, 0.05)
+    }
+
+    @Test
     fun `no NDL recorded while unlimited in very shallow water`() {
         val h = Harness()
         h.feed(0.0, 5)
