@@ -53,6 +53,8 @@ adb install app\build\outputs\apk\debug\app-debug.apk
 
 Toolchain: JDK 17 on PATH, SDK at `%LOCALAPPDATA%\Android\Sdk`, Gradle 8.10.2 via wrapper, AGP 8.7.3, Kotlin 2.0.21 + KSP.
 
+Releases: pushing a `v*` tag runs `.github/workflows/release.yml` — tests, then both release APKs attached to a GitHub Release as `DiveMaster-watch-<tag>.apk` / `DiveMaster-phone-<tag>.apk` (workflow_dispatch builds artifacts without a release). Release builds fall back to debug signing unless the `DIVEMASTER_KEYSTORE_*` secrets are set (see workflow header) — without them every release has a fresh signature: watch+phone must be installed from the same release and updates need an uninstall first.
+
 ## Known hardware risks (why the probe screen exists)
 
 1. Consumer barometer chips often spec only ~1250 hPa → saturation near 2.5 m of water. **Ultra 2 probe findings (2026-08-31):** the HAL declares `maximumRange` ≈ 1013 hPa — a nominal value, not a hard limit — and live readings exceeded it underwater (+~20 hPa in a water bottle → correct 0.2 m). The probe verdict treats a low declared spec as "ceiling unknown" and turns green once readings pass the spec. The **true saturation point is still unknown**: verify with staged depths (watch lowered on a line / pool steps, reading "max seen") before trusting the depth channel, and field-validate against a certified computer.

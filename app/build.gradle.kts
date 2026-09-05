@@ -20,9 +20,29 @@ android {
         compose = true
     }
 
+    signingConfigs {
+        create("release") {
+            // Provided by CI (or a local shell) via environment; when absent,
+            // release builds fall back to debug signing so they stay installable.
+            val keystorePath = System.getenv("DIVEMASTER_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("DIVEMASTER_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("DIVEMASTER_KEY_ALIAS")
+                keyPassword = System.getenv("DIVEMASTER_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            val hasReleaseKeystore = System.getenv("DIVEMASTER_KEYSTORE_FILE")?.isNotBlank() == true
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 

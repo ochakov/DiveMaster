@@ -22,9 +22,29 @@ android {
         compose = true
     }
 
+    signingConfigs {
+        create("release") {
+            // Must match the wear app's signing (same env vars) — the Wearable
+            // Data Layer only connects apps with identical signatures.
+            val keystorePath = System.getenv("DIVEMASTER_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("DIVEMASTER_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("DIVEMASTER_KEY_ALIAS")
+                keyPassword = System.getenv("DIVEMASTER_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            val hasReleaseKeystore = System.getenv("DIVEMASTER_KEYSTORE_FILE")?.isNotBlank() == true
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
