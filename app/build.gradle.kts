@@ -12,8 +12,8 @@ android {
         applicationId = "com.ochakov.divemaster"
         minSdk = 30
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.8.0"
+        versionCode = 3
+        versionName = "0.9.0"
     }
 
     buildFeatures {
@@ -29,7 +29,9 @@ android {
                 storeFile = file(keystorePath)
                 storePassword = System.getenv("DIVEMASTER_KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("DIVEMASTER_KEY_ALIAS")
-                keyPassword = System.getenv("DIVEMASTER_KEY_PASSWORD")
+                // PKCS12 keystores share one password; the key-specific secret is optional.
+                keyPassword = System.getenv("DIVEMASTER_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("DIVEMASTER_KEYSTORE_PASSWORD")
             }
         }
     }

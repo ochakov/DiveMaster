@@ -12,7 +12,7 @@ name: Release
 #   DIVEMASTER_KEYSTORE_BASE64    base64 of the keystore file
 #   DIVEMASTER_KEYSTORE_PASSWORD
 #   DIVEMASTER_KEY_ALIAS
-#   DIVEMASTER_KEY_PASSWORD
+#   DIVEMASTER_KEY_PASSWORD       optional — defaults to the keystore password (PKCS12)
 # Generate a keystore with:
 #   keytool -genkeypair -v -keystore divemaster-release.keystore \
 #     -alias divemaster -keyalg RSA -keysize 4096 -validity 10000
