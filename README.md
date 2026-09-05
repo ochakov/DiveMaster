@@ -60,8 +60,40 @@ channel (see `docs/phase8-field-validation.md`).
   (Subsurface-importable)
 - Phone companion app: automatic dive sync via the Wearable Data Layer,
   archive logbook, large depth charts
-- Hidden dive simulator for dry-land testing (5 taps on the Simulator row in
-  settings)
+- Hidden dive simulator for dry-land testing (see
+  [Dive simulator](#dive-simulator))
+
+## Dive simulator
+
+The app contains a hidden simulator that feeds a synthetic pressure profile
+through the **exact same engine, alert, logging, and sync path** as a real
+dive — nothing is mocked except the sensor. It exists for dry-land testing
+and for demoing the dive screen.
+
+**Enable it:** open **Settings** and tap the **Simulator** row five times —
+it flips to "On". (Same gesture turns it off.)
+
+**Run it:** a **"Start simulated dive"** chip appears on the surface screen.
+Tapping it starts the dive; the app auto-switches to the dive screen with an
+amber **SIM** badge, and touch is locked exactly as underwater. A **"Stop
+simulation"** chip on the surface screen aborts early (reachable after the
+dive ends, or via the watch's back/home button mid-sim).
+
+**The profile** compresses a realistic ~12-minute dive into about 3½ minutes
+of real time (4× time scale): descent at 18 m/min to **20 m**, five minutes
+of bottom time with the NDL visibly counting down, ascent at 9 m/min into
+the **safety stop** at 5 m — including a deliberate drift down to 7.5 m so
+you see the countdown pause (amber) and resume — the stop-complete
+double-tick vibration, and then a deliberately fast **12 m/min final ascent**
+that triggers the ascent-rate alert (rapid pulses, red rate bar). The dive
+ends automatically after surfacing and appears in the dive log and on the
+phone like any real dive.
+
+**Two things to know:** the logged duration is simulated time (~12 min), not
+wall time; and simulated dives load the *real* tissue model, so NDL readouts
+afterwards reflect that residual nitrogen until surface off-gassing clears it
+(hours). Deleting the log entry does not reset tissue state — so don't run
+the simulator right before a real dive.
 
 ## Project layout
 
