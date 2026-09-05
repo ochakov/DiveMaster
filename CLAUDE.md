@@ -16,7 +16,7 @@ A standalone Wear OS scuba dive computer (single gas: air/nitrox). Target device
 | Platform | minSdk 30 (Wear OS 3+), compileSdk 35, Kotlin, package `com.ochakov.divemaster` |
 | Storage | Room (dives + 1 Hz samples + persistent tissue state), DataStore for settings |
 | Units | Metric default with imperial toggle |
-| Dev | Hidden simulator mode feeding synthetic pressure profiles |
+| Dev | Hidden simulator mode (5-tap Simulator row) feeding synthetic pressure profiles; **also shallows real-water detection to 0.5 m start / 0.3 m end for bench testing** (`buildConfig` in DiveService). Production (dev off) keeps the locked 1.2 m/0.8 m rule. |
 
 Dive detection: start at depth ≥ 1.2 m held 3 s (clock backdated to submersion); end after < 0.8 m held 60 s; re-descend within 60 s continues the same dive; dives < 60 s discarded. Alert defaults: ascent > 10 m/min, descent > 20 m/min, low NDL < 5 min.
 

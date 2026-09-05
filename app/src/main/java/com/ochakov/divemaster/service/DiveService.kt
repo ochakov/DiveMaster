@@ -341,19 +341,32 @@ class DiveService : Service() {
         tissue: TissueState,
         cnsFraction: Double,
         surfaceBar: Double?,
-    ) = DiveEngine(
-        DiveEngineConfig(
+    ) = DiveEngine(buildConfig(settings), tissue, cnsFraction, surfaceBar)
+
+    private fun buildConfig(settings: DiveSettings): DiveEngineConfig {
+        val base = DiveEngineConfig(
             settings.waterType,
             settings.gas,
             settings.gradientFactors,
             safetyStopSeconds = settings.safetyStopMinutes * 60,
             safetyStopMinDepthM = settings.safetyStopMinDepthM,
             safetyStopMaxDepthM = settings.safetyStopMaxDepthM,
-        ),
-        tissue,
-        cnsFraction,
-        surfaceBar,
-    )
+        )
+        // Dev/test mode (hidden simulator toggle) shallows the detection window
+        // so a real dive can be triggered in a bucket/sink. Production installs
+        // keep the locked 1.2 m / 0.8 m rule — never ship shallow detection on.
+        return if (settings.simulatorEnabled) {
+            Log.i(TAG, "Dev mode: shallow dive detection (start 0.5 m)")
+            base.copy(
+                startDepthM = 0.5,
+                endDepthM = 0.3,
+                submersionEpsilonM = 0.15,
+                gasSwitchDepthM = 0.2,
+            )
+        } else {
+            base
+        }
+    }
 
     private fun buildEvaluator(settings: DiveSettings) = AlertEvaluator(
         AlertConfig(

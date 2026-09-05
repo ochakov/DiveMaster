@@ -167,6 +167,13 @@ fun SettingsScreen(onEditNumber: (NumberSettingId) -> Unit) {
                         style = MaterialTheme.typography.body1,
                         color = if (settings.simulatorEnabled) DiveAmber else MaterialTheme.colors.onBackground,
                     )
+                    if (settings.simulatorEnabled) {
+                        Text(
+                            "dev: dives trigger at 0.5 m",
+                            fontSize = 9.sp,
+                            color = DiveAmber.copy(alpha = 0.8f),
+                        )
+                    }
                     if (taps in 1..4) {
                         Text(
                             "${5 - taps} taps to toggle",
