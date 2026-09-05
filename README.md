@@ -1,8 +1,9 @@
 # DiveMaster
 
 A scuba dive computer for Wear OS watches — Bühlmann ZH-L16C with gradient
-factors, running on any Wear OS 3+ watch with a barometer (built on a Samsung
-Galaxy Watch Ultra 2), with a phone companion app for browsing dive logs.
+factors, running on any Wear OS 3+ watch with a barometer, with a phone
+companion app for browsing dive logs. Developed and tested on the Samsung
+Galaxy Watch Ultra 2 (see [Compatible watches](#compatible-watches)).
 
 > ## ⚠️ Safety warning
 >
@@ -14,6 +15,31 @@ Galaxy Watch Ultra 2), with a phone companion app for browsing dive logs.
 > smartwatches are not. Scuba diving requires training and certification.
 > The software is provided **without warranty of any kind** (see LICENSE);
 > you assume all risk of using it.
+
+## Compatible watches
+
+The app installs on any Wear OS 3+ watch with a barometer, but a watch is
+only scuba-compatible when **all three** hold:
+
+1. **Wear OS 3 or newer** (API 30+)
+2. **A barometric pressure sensor** (required by the app — depth is derived
+   from it)
+3. **A manufacturer dive rating of 10 ATM or better** — this is the hard
+   gate. Water resistance ratings like 5 ATM or IP68 are *not* dive ratings.
+
+| Watch | Rating | Scuba use |
+|---|---|---|
+| Samsung Galaxy Watch Ultra 2 | 10 ATM | ✅ Reference device — the app is developed and tested on it |
+| Samsung Galaxy Watch Ultra (2024) | 10 ATM | ✅ Same hardware class |
+| Samsung Galaxy Watch 5 Pro / 6 / 7 / 8 | 5 ATM | ❌ Not dive-rated — do not scuba |
+| Google Pixel Watch series | 5 ATM | ❌ Not dive-rated — do not scuba |
+
+On any new watch, run the built-in **Sensor probe** screen first (dry, then
+dunked): it reports the pressure sensor's declared range, live depth
+response, and available temperature sensors. Consumer barometers often
+declare only a nominal atmospheric range, and the true saturation depth is
+unknown until tested — verify at staged depths before trusting the depth
+channel (see `docs/phase8-field-validation.md`).
 
 ## Features
 
