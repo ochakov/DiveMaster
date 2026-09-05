@@ -53,7 +53,9 @@ adb install app\build\outputs\apk\debug\app-debug.apk
 
 Toolchain: JDK 17 on PATH, SDK at `%LOCALAPPDATA%\Android\Sdk`, Gradle 8.10.2 via wrapper, AGP 8.7.3, Kotlin 2.0.21 + KSP.
 
-Releases: pushing a `v*` tag runs `.github/workflows/release.yml` — tests, then both release APKs attached to a GitHub Release as `DiveMaster-watch-<tag>.apk` / `DiveMaster-phone-<tag>.apk` (workflow_dispatch builds artifacts without a release). Release builds fall back to debug signing unless the `DIVEMASTER_KEYSTORE_*` secrets are set (see workflow header) — without them every release has a fresh signature: watch+phone must be installed from the same release and updates need an uninstall first.
+Releases: pushing a `v*` tag runs `.github/workflows/release.yml` — tests, then both release APKs attached to a GitHub Release as `DiveMaster-watch-<tag>.apk` / `DiveMaster-phone-<tag>.apk` (workflow_dispatch builds artifacts without a release). Release builds fall back to debug signing unless the `DIVEMASTER_KEYSTORE_*` secrets are set (see workflow header) — without them every release has a fresh signature: watch+phone must be installed from the same release and updates need an uninstall first. `DIVEMASTER_KEY_PASSWORD` is optional (defaults to the store password for PKCS12). v0.9.0 (2026-09-06) is the first properly release-signed build — cert DN `CN=ochakov.com` (verify a downloaded APK with `apksigner verify --print-certs`).
+
+**Signing material must never be committed** — `*.keystore` / `*.jks` / `keystore.properties` are gitignored; never `git add -A` when a keystore may be in the working dir. History note: `divemaster-release.keystore` (the OLD key) was accidentally committed in `3b90dec` and pushed public, then untracked in `f0baca1`; the key was rotated (2026-09-06) so the leaked one is dead, but its blob still exists in history at `3b90dec` — an optional `git filter-repo` scrub + force-push remains available if desired.
 
 ## Known hardware risks (why the probe screen exists)
 
