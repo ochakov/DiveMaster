@@ -67,6 +67,10 @@ fun ProbeScreen() {
     var nativeDepthLabel by remember { mutableStateOf<String?>(null) }
     var nativeDepthRegistered by remember { mutableStateOf(false) }
     var nativeTempPresent by remember { mutableStateOf(false) }
+    // Raw values of every depth-named sensor (69705 standard, 69709 Mares, …)
+    // so a dunk reveals which one delivers and in which index the depth sits.
+    val depthRaw = remember { mutableStateMapOf<String, String>() }
+    val depthMax = remember { mutableStateMapOf<String, Float>() }
 
     DisposableEffect(Unit) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -145,10 +149,27 @@ fun ProbeScreen() {
         samsungSource.start()
         nativeDepthRegistered = samsungSource.depthRegistered
 
+        // Raw viewer for every depth-named sensor (wake-up variants included),
+        // so a dunk shows which type streams and which index carries depth.
+        val depthSensors = all.filter { it.name.contains("depth", ignoreCase = true) }
+        val depthRawListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val key = "t${event.sensor.type}"
+                depthRaw[key] = event.values.joinToString(" ") { "%.2f".format(it) }
+                // Track the largest value[1] seen (the likely depth index per the guide).
+                val d = event.values.getOrNull(1) ?: return
+                if ((depthMax[key] ?: Float.NEGATIVE_INFINITY) < d) depthMax[key] = d
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+        depthSensors.forEach { sensorManager.registerListener(depthRawListener, it, SensorManager.SENSOR_DELAY_UI) }
+
         onDispose {
             sensorManager.unregisterListener(pressureListener)
             sensorManager.unregisterListener(ambientListener)
             sensorManager.unregisterListener(vendorListener)
+            sensorManager.unregisterListener(depthRawListener)
             samsungSource.stop()
         }
     }
@@ -241,6 +262,30 @@ fun ProbeScreen() {
                             }
                         },
                         colors = ChipDefaults.secondaryChipColors(),
+                    )
+                }
+            }
+
+            item { Spacer(Modifier.height(8.dp)) }
+            item { Text("DEPTH CANDIDATES (raw)", style = MaterialTheme.typography.caption2, color = MaterialTheme.colors.secondary) }
+            if (depthRaw.isEmpty()) {
+                item {
+                    Text(
+                        "No depth-named sensors delivering yet — dunk to test",
+                        style = MaterialTheme.typography.caption2,
+                        color = MaterialTheme.colors.onBackground.copy(alpha = 0.6f),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else {
+                val keys = depthRaw.keys.sorted()
+                items(keys.size) { i ->
+                    val key = keys[i]
+                    Text(
+                        "$key: [${depthRaw[key]}]  max[1]=${depthMax[key]?.let { "%.2f".format(it) } ?: "—"}",
+                        fontSize = 10.sp,
+                        color = DiveGreen,
+                        textAlign = TextAlign.Center,
                     )
                 }
             }

@@ -30,26 +30,30 @@ class SamsungDepthSource(
     private val onWaterTemp: (celsius: Double) -> Unit,
 ) : SensorEventListener {
 
-    private val depthSensor: Sensor? =
-        runCatching { sensorManager.getDefaultSensor(TYPE_WATER_DEPTH, true) }.getOrNull()
+    // Two known depth sensor variants on the Galaxy Watch Ultra: the "standard"
+    // Samsung one (69705, mute on a normal install) and the Mares dive-app
+    // variant (69709). Register whichever exist; use whichever actually streams.
+    private val depthSensors: List<Sensor> =
+        DEPTH_TYPES.mapNotNull { type -> runCatching { sensorManager.getDefaultSensor(type, true) }.getOrNull() }
     private val tempSensor: Sensor? =
-        runCatching { sensorManager.getDefaultSensor(TYPE_WATER_TEMPERATURE) }.getOrNull()
+        TEMP_TYPES.firstNotNullOfOrNull { type -> runCatching { sensorManager.getDefaultSensor(type) }.getOrNull() }
 
-    /** The sensor is visible; whether it delivers events is only provable in water. */
-    val available: Boolean get() = depthSensor != null
+    /** A depth sensor is visible; whether it delivers events is only provable in water. */
+    val available: Boolean get() = depthSensors.isNotEmpty()
 
     val tempAvailable: Boolean get() = tempSensor != null
 
-    val depthSensorLabel: String? get() = depthSensor?.let { "${it.name} (type ${it.type})" }
+    val depthSensorLabel: String? get() =
+        depthSensors.joinToString(", ") { "${it.name} (t${it.type})" }.ifEmpty { null }
 
-    /** False when the framework rejected the listener (a delivery-side permission gate). */
+    /** True if the framework accepted at least one depth listener registration. */
     var depthRegistered = false
         private set
 
     fun start() {
-        depthRegistered = depthSensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
-        } ?: false
+        depthRegistered = depthSensors.fold(false) { acc, sensor ->
+            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI) || acc
+        }
         tempSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
     }
 
@@ -59,14 +63,17 @@ class SamsungDepthSource(
 
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
-            TYPE_WATER_DEPTH -> {
+            in DEPTH_TYPES -> {
                 val state = event.values.getOrNull(0) ?: return
                 if (state == ENTERED_WATER || state == EXITED_WATER) return
+                // Both variants are assumed to carry depth (m) in values[1] per
+                // the reverse-engineered 69705 layout; the probe's raw viewer
+                // verifies this for 69709 (Mares) before we trust it in a dive.
                 val depthM = event.values.getOrNull(1) ?: return
                 onLiveSample(System.currentTimeMillis(), depthM.toDouble())
             }
 
-            TYPE_WATER_TEMPERATURE -> {
+            in TEMP_TYPES -> {
                 if (event.values.getOrNull(0) == VALID) {
                     event.values.getOrNull(2)?.let { onWaterTemp(it.toDouble()) }
                 }
@@ -79,7 +86,11 @@ class SamsungDepthSource(
     companion object {
         /** Samsung private vendor sensor ids (SENSOR_TYPE_DEVICE_PRIVATE_BASE range). */
         const val TYPE_WATER_DEPTH = 69705
+        const val TYPE_WATER_DEPTH_MARES = 69709
         const val TYPE_WATER_TEMPERATURE = 69686
+        const val TYPE_WATER_TEMPERATURE_MARES = 69711
+        private val DEPTH_TYPES = setOf(TYPE_WATER_DEPTH, TYPE_WATER_DEPTH_MARES)
+        private val TEMP_TYPES = setOf(TYPE_WATER_TEMPERATURE, TYPE_WATER_TEMPERATURE_MARES)
         private const val ENTERED_WATER = 1.0f
         private const val EXITED_WATER = 2.0f
         private const val VALID = 1.0f
