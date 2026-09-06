@@ -326,9 +326,13 @@ fun ProbeScreen() {
             if (nativeDepthAvailable) {
                 item {
                     Text(
-                        "Sensor visible — drives dives once it streams",
+                        if (ssensorGranted) {
+                            "Sensor visible — drives dives once it streams"
+                        } else {
+                            "Visible but BLOCKED — SSENSOR denied; needs a privileged/system install. Barometer is used instead."
+                        },
                         style = MaterialTheme.typography.caption1,
-                        color = DiveGreen,
+                        color = if (ssensorGranted) DiveGreen else DiveAmber,
                         textAlign = TextAlign.Center,
                     )
                 }
