@@ -1,6 +1,7 @@
 package com.ochakov.divemaster.ui.probe
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -71,6 +72,8 @@ fun ProbeScreen() {
     // so a dunk reveals which one delivers and in which index the depth sits.
     val depthRaw = remember { mutableStateMapOf<String, String>() }
     val depthMax = remember { mutableStateMapOf<String, Float>() }
+    var ssensorGranted by remember { mutableStateOf(false) }
+    var depthCandidates by remember { mutableStateOf(listOf<String>()) }
 
     DisposableEffect(Unit) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -151,7 +154,19 @@ fun ProbeScreen() {
 
         // Raw viewer for every depth-named sensor (wake-up variants included),
         // so a dunk shows which type streams and which index carries depth.
+        ssensorGranted =
+            context.checkSelfPermission("com.samsung.permission.SSENSOR") == PackageManager.PERMISSION_GRANTED
         val depthSensors = all.filter { it.name.contains("depth", ignoreCase = true) }
+        depthCandidates = depthSensors.map {
+            val mode = when (it.reportingMode) {
+                Sensor.REPORTING_MODE_CONTINUOUS -> "cont"
+                Sensor.REPORTING_MODE_ON_CHANGE -> "on-change"
+                Sensor.REPORTING_MODE_ONE_SHOT -> "one-shot"
+                Sensor.REPORTING_MODE_SPECIAL_TRIGGER -> "trigger"
+                else -> "mode?"
+            }
+            "t${it.type} $mode ${if (it.isWakeUpSensor) "wake" else "non-wake"}"
+        }
         val depthRawListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val key = "t${event.sensor.type}"
@@ -268,6 +283,22 @@ fun ProbeScreen() {
 
             item { Spacer(Modifier.height(8.dp)) }
             item { Text("DEPTH CANDIDATES (raw)", style = MaterialTheme.typography.caption2, color = MaterialTheme.colors.secondary) }
+            item {
+                Text(
+                    if (ssensorGranted) "SSENSOR permission: GRANTED" else "SSENSOR permission: DENIED — private sensors won't stream",
+                    fontSize = 10.sp,
+                    color = if (ssensorGranted) DiveGreen else DiveRed,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            items(depthCandidates.size) { i ->
+                Text(
+                    depthCandidates[i],
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                )
+            }
             if (depthRaw.isEmpty()) {
                 item {
                     Text(
