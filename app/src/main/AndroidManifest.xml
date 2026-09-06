@@ -19,11 +19,8 @@
     <uses-permission
         android:name="com.samsung.permission.SSENSOR"
         tools:ignore="ProtectedPermissions" />
-    <!-- Samsung Water Lock (Galaxy Watch): keeps the screen usable and disables the
-         touchscreen underwater. Best-effort — likely privileged; the app works without it. -->
-    <uses-permission
-        android:name="com.samsung.android.clockwork.settings.permission.CHANGE_WATER_LOCK"
-        tools:ignore="ProtectedPermissions" />
+    <!-- Water Lock intentionally NOT used: engaging it seals the barometer port and
+         kills depth measurement (confirmed 2026-09-06). Barometric depth requires it off. -->
 
     <application
         android:name=".DiveMasterApplication"

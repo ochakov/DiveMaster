@@ -36,8 +36,8 @@ import com.ochakov.divemaster.data.settings.DiveSettings
 import com.ochakov.divemaster.data.settings.SettingsRepository
 import com.ochakov.divemaster.engine.DivePhase
 import com.ochakov.divemaster.service.DiveService
-import com.ochakov.divemaster.service.WaterLockController
 import com.ochakov.divemaster.ui.Units
+import com.ochakov.divemaster.ui.theme.DiveAmber
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDateTime
@@ -176,40 +176,12 @@ fun SurfaceScreen(
             item { Spacer(Modifier.height(6.dp)) }
             if (!diving) {
                 item {
-                    var waterLockNote by remember { mutableStateOf<String?>(null) }
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Chip(
-                            label = { Text("Water lock & dive") },
-                            secondaryLabel = { Text("recording stays on") },
-                            onClick = {
-                                waterLockNote = if (WaterLockController.launch(context)) {
-                                    null
-                                } else {
-                                    "Swipe down, tap the 💧 water tile before entering the water."
-                                }
-                            },
-                            colors = ChipDefaults.primaryChipColors(),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        waterLockNote?.let {
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                it,
-                                style = MaterialTheme.typography.caption2,
-                                color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                    }
-                }
-                item {
                     Text(
-                        "Underwater the screen sleeps — the dive still records. Press the side button to glance.",
+                        "⚠ Do NOT enable Water Lock — it disables the depth sensor. Underwater the screen sleeps; the dive still records. Press the side button to glance.",
                         style = MaterialTheme.typography.caption2,
-                        color = MaterialTheme.colors.onBackground.copy(alpha = 0.5f),
+                        color = DiveAmber,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
