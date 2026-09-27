@@ -25,6 +25,14 @@ unknown. Weight the watch on a line, open the **Sensor probe** screen
 Pass: max-seen within ±0.3 m or ±3% of line depth at every stage. A
 plateau = the sensor ceiling; the app must not be trusted below it.
 
+**Result (2026-09-25) — passed by real dives instead of a line test.** With
+a certified dive computer on the other wrist, DiveMaster's barometric depth
+read correctly throughout a 24-min open-water dive to **29.5 m** and a
+38-min shallow dive to 8.6 m (Ev's side-by-side comparison). No plateau:
+the sensor ceiling is **≥ 30 m**, so the go/no-go is a GO and hardware
+risk #1 is retired. Depths beyond 30 m are still unverified — treat deeper
+readings as untested until a deeper comparison dive is logged.
+
 ## B. Side-by-side dive protocol (per dive)
 
 Setup: certified computer set to the same GF as DiveMaster (Garmin
@@ -47,6 +55,19 @@ Record (slate or memory, once each — no continuous underwater reading):
 Also note: did the dive auto-start/auto-end correctly? Screen stay on?
 Touch lock hold? Any phantom system-shade pulls? Safety-stop countdown
 behavior vs the certified computer's? Alerts felt when expected?
+
+### Dives logged so far
+
+| # | Date | DiveMaster (max / avg / time / lowest NDL) | Certified (max / NDL at max / temp) | Notes |
+|---|---|---|---|---|
+| 1 | 2026-09-25 09:44 | 29.5 m / 12.6 m / 24:15 / 9 min | depth agrees (Ev); NDL + temp to record | 1456 samples for 1455 s = exactly 1 Hz, no gaps, recorded headless; ~5-min plateau at ~5 m (safety stop) visible in the profile; surface 1015 mbar; **min temp missing** |
+| 2 | 2026-09-25 15:08 | 8.6 m / 4.3 m / 38:20 / 501 min | depth agrees (Ev); NDL + temp to record | 2301 samples for 2300 s = exactly 1 Hz, no gaps; both dives synced to the phone with full profiles; **min temp missing** |
+
+Open issue from these dives: **min temp "—" on both** — the engine keeps
+`minTempC` null only when every 1 Hz sample arrived with `tempC = null`, so
+no temperature sensor delivered a single event to the service during
+either dive (the skin-temp vendor sensor did report on the probe screen on
+land, 2026-08-31). To be diagnosed.
 
 ## C. Profile replay (after each dive)
 
@@ -71,8 +92,8 @@ during a dive (triple buzz + red BAT badge).
 
 ## Status
 
-- [ ] A. Staged-depth test done, ceiling ≥ 30 m (or documented)
-- [ ] B. ≥ 3 side-by-side dives recorded, depth within ±0.3 m / 3%
+- [x] A. Sensor ceiling ≥ 30 m — **passed 2026-09-25** by real-dive comparison (correct to 29.5 m vs a certified computer)
+- [ ] B. ≥ 3 side-by-side dives recorded, depth within ±0.3 m / 3% — **2 of 3 logged** (2026-09-25, depth agreement confirmed by Ev); certified NDL/temp figures still to be written down
 - [ ] C. Profile replay agrees on ≥ 2 real dives
-- [ ] D. Battery endurance ≥ 4 h implied
+- [ ] D. Battery endurance ≥ 4 h implied — figures not yet recorded
 - [ ] Verdict: DiveMaster approved as trustworthy secondary instrument
