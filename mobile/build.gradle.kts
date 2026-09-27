@@ -14,8 +14,8 @@ android {
         applicationId = "com.ochakov.divemaster"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.9.0"
+        versionCode = 4
+        versionName = "0.9.1"
     }
 
     buildFeatures {

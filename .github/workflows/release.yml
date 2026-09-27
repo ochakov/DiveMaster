@@ -57,7 +57,7 @@ jobs:
           fi
 
       - name: Run unit tests
-        run: ./gradlew :core:deco:test :core:engine:test
+        run: ./gradlew :core:deco:test :core:engine:test :core:data:testDebugUnitTest
 
       - name: Build watch and phone release APKs
         env:
