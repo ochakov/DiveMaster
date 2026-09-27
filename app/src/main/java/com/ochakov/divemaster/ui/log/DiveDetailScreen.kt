@@ -111,7 +111,8 @@ fun DiveDetailScreen(diveId: Long, onDeleted: () -> Unit) {
                 }
 
                 val o2 = (currentDive.gasO2Fraction * 100).roundToInt()
-                val rows = listOf(
+                val rows = listOfNotNull(
+                    ("Late start" to "began underwater").takeIf { currentDive.startedUnderwater },
                     "Duration" to "%d:%02d".format(currentDive.durationSec / 60, currentDive.durationSec % 60),
                     "Max depth" to Units.depthWithUnit(currentDive.maxDepthM, metric),
                     "Avg depth" to Units.depthWithUnit(currentDive.avgDepthM, metric),
@@ -239,9 +240,10 @@ private fun writeCsv(context: android.content.Context, dive: DiveEntity, samples
         writer.appendLine(
             String.format(
                 Locale.US,
-                "# startEpochMs=%d endEpochMs=%d maxDepthM=%.2f avgDepthM=%.2f gasO2=%.2f gf=%d/%d water=%s surfaceMbar=%.1f",
+                "# startEpochMs=%d endEpochMs=%d maxDepthM=%.2f avgDepthM=%.2f gasO2=%.2f gf=%d/%d water=%s surfaceMbar=%.1f lateStart=%d",
                 dive.startEpochMs, dive.endEpochMs, dive.maxDepthM, dive.avgDepthM,
                 dive.gasO2Fraction, dive.gfLow, dive.gfHigh, dive.waterType, dive.surfacePressureMbar,
+                if (dive.startedUnderwater) 1 else 0,
             ),
         )
         writer.appendLine("time_sec,depth_m,temp_c,ndl_min")

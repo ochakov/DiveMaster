@@ -55,4 +55,51 @@ data class DiveEngineConfig(
     val rateWindowSec: Double = 8.0,
     /** Cap on tissue-integration step across sample gaps (sensor stalls). */
     val maxSampleGapSec: Double = 60.0,
+
+    // --- Cold-start surface reference (an app restarted underwater must not
+    // --- take ambient pressure at depth for the atmosphere; Ev, 2026-09-27).
+
+    /**
+     * Highest pressure that can still be air. No place on Earth's surface
+     * exceeds ~1.085 bar (all-time record ≈ 1.084; the Dead Sea shore sits
+     * near 1.065), so a cold-start reading above this is water regardless of
+     * memory, and the surface reference is never allowed above it.
+     */
+    val atmosphericCeilingBar: Double = 1.100,
+    /**
+     * A first reading at least this far above a fresh [SurfaceMemory] is
+     * suspected to be underwater: 0.3 m of water, the dive-start depth. Weather
+     * moves a few hPa per hour, so this stays clear of drift within
+     * [surfaceMemoryMaxAgeSec].
+     */
+    val underwaterStartExcessBar: Double = 0.030,
+    /** A surface memory older than this no longer vetoes calibration. */
+    val surfaceMemoryMaxAgeSec: Double = 6.0 * 3600.0,
+    /**
+     * Suspected-underwater cold start: how long to watch before deciding.
+     * Water swings the reading around (a swimming wrist moves decimetres); a
+     * boat deck after a drive down from altitude — the false-positive case —
+     * is static.
+     */
+    val startCheckWindowSec: Double = 20.0,
+    /** Peak-to-peak pressure swing inside that window that proves water (0.1 m). */
+    val startCheckMotionBar: Double = 0.010,
+    /**
+     * Mid-dive: a reading this far "above the surface" proves the frozen
+     * reference was too high (a memory or a guess after an underwater
+     * restart). The reference drops to the observed minimum and the dive so
+     * far is re-based.
+     */
+    val referenceCorrectionDepthM: Double = 0.2,
+    /**
+     * Guessed reference only (underwater start with no fresh memory): the
+     * standard atmosphere may sit *below* the real surface pressure, which
+     * would leave a surfaced diver at a permanent "depth" and the dive unable
+     * to end. A reading shallower than [stillWaterMaxDepthM] that stays within
+     * [stillWaterMotionBar] peak-to-peak for [stillWaterWindowSec] is a diver
+     * standing at the real surface, which then becomes the reference.
+     */
+    val stillWaterMaxDepthM: Double = 0.6,
+    val stillWaterWindowSec: Double = 60.0,
+    val stillWaterMotionBar: Double = 0.005,
 )

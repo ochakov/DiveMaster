@@ -13,5 +13,6 @@ object DiveSyncKeys {
     const val KEY_SURFACE_MBAR = "surfacePressureMbar"
     const val KEY_GF_LOW = "gfLow"
     const val KEY_GF_HIGH = "gfHigh"
+    const val KEY_STARTED_UNDERWATER = "startedUnderwater"
     const val KEY_SAMPLES = "samples"
 }

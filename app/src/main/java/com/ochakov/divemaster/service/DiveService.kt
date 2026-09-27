@@ -1,5 +1,7 @@
 package com.ochakov.divemaster.service
 
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -25,6 +27,7 @@ import com.ochakov.divemaster.R
 import com.ochakov.divemaster.data.db.DiveMasterDatabase
 import com.ochakov.divemaster.data.settings.DiveSettings
 import com.ochakov.divemaster.data.settings.SettingsRepository
+import com.ochakov.divemaster.data.surface.SurfaceMemoryStore
 import com.ochakov.divemaster.deco.DepthConverter
 import com.ochakov.divemaster.deco.TissueState
 import com.ochakov.divemaster.engine.AlertConfig
@@ -37,6 +40,7 @@ import com.ochakov.divemaster.engine.EngineEvent
 import com.ochakov.divemaster.engine.PressureSample
 import com.ochakov.divemaster.engine.SensorPipeline
 import com.ochakov.divemaster.engine.SimulatorProfile
+import com.ochakov.divemaster.engine.SurfaceMemory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -48,12 +52,21 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * Foreground service hosting the dive engine. Runs while the app is visible,
  * keeps itself (plus a wake lock) alive for the whole dive once submerged,
  * and stops on the surface when the app is gone. All engine access happens on
  * a single processing coroutine fed through a channel.
+ *
+ * Surface memory: while the engine trusts its surface reference, the service
+ * remembers it (DataStore, ~once a minute). A cold-started engine is seeded
+ * with that memory so an app restarted *underwater* — a third-party app can
+ * always be killed — recognises depth for what it is instead of calibrating
+ * to it (Ev's 2026-09-25 dive logged a "surface" of 1487 mbar that way).
  */
 class DiveService : Service() {
 
@@ -61,6 +74,7 @@ class DiveService : Service() {
         data class Sample(val sample: PressureSample) : Input
         data class NativeDepth(val timestampMs: Long, val depthM: Double) : Input
         data object Abort : Input
+        data object Recalibrate : Input
         data class SettingsChanged(val settings: DiveSettings) : Input
     }
 
@@ -71,15 +85,20 @@ class DiveService : Service() {
     private var samsungSource: SamsungDepthSource? = null
     @Volatile private var engine: DiveEngine? = null
     private var recorder: DiveSessionRecorder? = null
+    private var surfaceMemoryStore: SurfaceMemoryStore? = null
     private var sensorManager: SensorManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var simJob: Job? = null
     private var alertSounder: AlertSounder? = null
     private var diveModeActive = false
+    private var checkNotified = false
 
     @Volatile private var lastSampleWallMs = 0L
     @Volatile private var lastForegroundWallMs = 0L
     @Volatile private var lastDepthLogMs = 0L
+    @Volatile private var lastSurfaceMemoryWriteMs = 0L
+    @Volatile private var lastWakeLockRefreshMs = 0L
+    @Volatile private var lastArmLogMs = 0L
     private var batteryWarned = false
 
     @Volatile private var ambientTempC: Double? = null
@@ -137,6 +156,8 @@ class DiveService : Service() {
         serviceRunning.value = true
         alertSounder = AlertSounder(this)
         lastForegroundWallMs = System.currentTimeMillis()
+        LifecycleLog.append(this, "service created")
+        captureExitHistory()
         // Held for the whole monitoring lifetime (not just during a dive): a
         // watch that sleeps its screen on water contact would otherwise suspend
         // the CPU and stop barometer sampling before a dive is ever detected.
@@ -150,7 +171,27 @@ class DiveService : Service() {
             recorder = rec
             val syncPublisher = DiveSyncPublisher(this@DiveService, dao)
             launch { syncPublisher.reconcileAll() }
-            var eng = buildEngine(settings, restored.tissue, restored.cnsFraction, null)
+
+            val memoryStore = SurfaceMemoryStore(this@DiveService)
+            surfaceMemoryStore = memoryStore
+            val remembered = memoryStore.read()
+            rememberedSurface.value = remembered?.let { it.pressureBar to it.epochMs }
+            val memory = remembered?.let {
+                SurfaceMemory(
+                    it.pressureBar,
+                    ((System.currentTimeMillis() - it.epochMs) / 1000.0).coerceAtLeast(0.0),
+                )
+            }
+            Log.i(
+                TAG,
+                "Surface memory: " + (
+                    memory?.let { "%.1f hPa, %.0f min old".format(it.pressureBar * 1000, it.ageSec / 60) }
+                        ?: "none"
+                    ),
+            )
+
+            var config = buildConfig(settings)
+            var eng = buildEngine(settings, restored.tissue, restored.cnsFraction, null, memory)
             engine = eng
             var evaluator = buildEvaluator(settings)
             var pendingSettings: DiveSettings? = null
@@ -162,24 +203,86 @@ class DiveService : Service() {
                 repository.settings.collect { inputs.trySend(Input.SettingsChanged(it)) }
             }
 
+            fun rememberSurface(bar: Double, nowWall: Long) {
+                lastSurfaceMemoryWriteMs = nowWall
+                rememberedSurface.value = bar to nowWall
+                launch { memoryStore.write(bar, nowWall) }
+            }
+
             suspend fun processEngineSample(sample: PressureSample, fromNativeDepth: Boolean) {
                 lastSampleWallMs = System.currentTimeMillis()
                 nativeDepthDriving.value = fromNativeDepth
                 val events = eng.onSample(sample)
                 rec.handle(events, eng, System.currentTimeMillis())
-                displayState.value = eng.displayState.copy(simulated = simulatorRunning.value)
-                updateDiveMode(eng.displayState.phase == DivePhase.DIVING)
-                val alerts = evaluator.evaluate(eng.displayState, sample.timestampMs)
+                val state = eng.displayState
+                displayState.value = state.copy(simulated = simulatorRunning.value)
+                updateDiveMode(state.phase == DivePhase.DIVING)
+                val alerts = evaluator.evaluate(state, sample.timestampMs)
                 if (alerts.isNotEmpty()) {
                     alertSounder?.play(alerts, settings.vibrateEnabled, settings.beepEnabled)
                 }
+
+                // Remember atmospheric pressure — only a reference the engine
+                // itself trusts (a real surface reading or a fresh memory with no
+                // cold-start suspicion pending), never a provisional or guessed
+                // one, and never the simulator's synthetic surface.
+                val started = events.firstOrNull { it is EngineEvent.DiveStarted } as? EngineEvent.DiveStarted
+                if (!simulatorRunning.value && state.referenceTrusted &&
+                    state.surfacePressureBar <= config.atmosphericCeilingBar
+                ) {
+                    val nowWall = System.currentTimeMillis()
+                    val dueOnSurface = state.phase == DivePhase.SURFACE &&
+                        nowWall - lastSurfaceMemoryWriteMs >= SURFACE_MEMORY_WRITE_MS
+                    val dueOnDiveStart = started != null && !started.startedUnderwater
+                    if (dueOnSurface || dueOnDiveStart) rememberSurface(state.surfacePressureBar, nowWall)
+                }
+                // The notification mirrors an undecided cold start (and offers recalibrate).
+                if (state.startCheckActive != checkNotified) {
+                    checkNotified = state.startCheckActive
+                    notify(currentStatusText())
+                }
+
                 // Diagnostics: prove headless sampling/detection works even with
                 // the screen forced off in water. Events always logged; depth
                 // throttled to ~5 s so logcat stays readable.
                 for (event in events) {
                     when (event) {
-                        is EngineEvent.DiveStarted -> Log.i(TAG, "DIVE STARTED (source=${if (fromNativeDepth) "native" else "baro"})")
-                        is EngineEvent.DiveEnded -> Log.i(TAG, "DIVE ENDED: ${event.durationSec}s max=%.1fm".format(event.maxDepthM))
+                        is EngineEvent.DiveStarted -> {
+                            Log.i(
+                                TAG,
+                                "DIVE STARTED (source=%s, lateStart=%b, surface=%.1f hPa)".format(
+                                    if (fromNativeDepth) "native" else "baro",
+                                    event.startedUnderwater,
+                                    event.surfacePressureBar * 1000,
+                                ),
+                            )
+                            LifecycleLog.append(
+                                this@DiveService,
+                                if (event.startedUnderwater) {
+                                    "DIVE STARTED UNDERWATER (late start, surface %.0f hPa from memory)"
+                                        .format(event.surfacePressureBar * 1000)
+                                } else {
+                                    "dive started (surface %.0f hPa)".format(event.surfacePressureBar * 1000)
+                                },
+                            )
+                        }
+
+                        is EngineEvent.SurfaceReferenceCorrected -> Log.i(
+                            TAG,
+                            "surface reference corrected to %.1f hPa (profile shifted %.2f m)".format(
+                                event.surfacePressureBar * 1000,
+                                event.depthShiftM,
+                            ),
+                        )
+
+                        is EngineEvent.DiveEnded -> {
+                            Log.i(TAG, "DIVE ENDED: ${event.durationSec}s max=%.1fm".format(event.maxDepthM))
+                            LifecycleLog.append(
+                                this@DiveService,
+                                "dive ended: ${event.durationSec / 60} min, max %.1f m".format(event.maxDepthM),
+                            )
+                        }
+
                         EngineEvent.DiveDiscarded -> Log.i(TAG, "dive discarded (<60 s)")
                         else -> Unit
                     }
@@ -190,8 +293,8 @@ class DiveService : Service() {
                     Log.d(
                         TAG,
                         "depth=%.2fm phase=%s src=%s screenOff-ok".format(
-                            eng.displayState.depthM,
-                            eng.displayState.phase,
+                            state.depthM,
+                            state.phase,
                             if (fromNativeDepth) "native" else "baro",
                         ),
                     )
@@ -226,14 +329,31 @@ class DiveService : Service() {
                         displayState.value = eng.displayState.copy(simulated = simulatorRunning.value)
                         updateDiveMode(false)
                     }
+
+                    Input.Recalibrate -> {
+                        val events = eng.recalibrate()
+                        rec.handle(events, eng, System.currentTimeMillis())
+                        displayState.value = eng.displayState.copy(simulated = simulatorRunning.value)
+                        updateDiveMode(false)
+                        checkNotified = false
+                        Log.i(
+                            TAG,
+                            "Recalibrated by user: surface=%.1f hPa".format(eng.displayState.surfacePressureBar * 1000),
+                        )
+                        LifecycleLog.append(this@DiveService, "recalibrated by user (not underwater)")
+                        notify(currentStatusText())
+                    }
                 }
 
-                // Apply edited settings only on the surface — never mid-dive.
-                // Tissue and CNS state carry over into the rebuilt engine.
+                // Apply edited settings only on the surface, and only once the
+                // engine trusts its reference (a rebuild would launder a
+                // provisional one) — never mid-dive. Tissue and CNS state carry
+                // over into the rebuilt engine.
                 val pending = pendingSettings
-                if (pending != null && eng.displayState.phase == DivePhase.SURFACE) {
+                if (pending != null && eng.displayState.phase == DivePhase.SURFACE && eng.displayState.referenceTrusted) {
                     settings = pending
                     pendingSettings = null
+                    config = buildConfig(settings)
                     eng = buildEngine(settings, eng.tissue, eng.cnsFraction, eng.displayState.surfacePressureBar)
                     engine = eng
                     evaluator = buildEvaluator(settings)
@@ -274,15 +394,27 @@ class DiveService : Service() {
                 }
                 if (!diving) batteryWarned = false
                 if (diving) lastForegroundWallMs = now
+                // The wake lock is acquired with a timeout as a safety net; keep
+                // it topped up so a long dive day never outlives it.
+                if (now - lastWakeLockRefreshMs >= WAKELOCK_REFRESH_MS) {
+                    lastWakeLockRefreshMs = now
+                    acquireMonitorWakeLock()
+                }
 
                 // Battery guard: if the user left monitoring running (auto-armed
                 // while the app was open) and then walked away — screen off, not
                 // diving — stand down after a long idle rather than holding the
-                // wake lock forever.
+                // wake lock forever. Long enough (3 h) to cover gearing up and a
+                // normal surface interval: the old 20 min stood the service down
+                // on the boat before Ev's 2026-09-25 afternoon dive.
                 if (!diving && simJob == null && !activityVisible &&
                     now - lastForegroundWallMs > MONITOR_IDLE_STOP_MS
                 ) {
                     Log.i(TAG, "Surface idle ${MONITOR_IDLE_STOP_MS / 60000} min — standing down")
+                    LifecycleLog.append(
+                        this@DiveService,
+                        "stood down: ${MONITOR_IDLE_STOP_MS / 3_600_000} h idle on the surface with the app closed",
+                    )
                     stopSelf()
                     return@launch
                 }
@@ -304,17 +436,26 @@ class DiveService : Service() {
         when (intent?.action) {
             ACTION_START_SIM -> startSimulation()
             ACTION_STOP_SIM -> stopSimulation()
+            ACTION_RECALIBRATE -> inputs.trySend(Input.Recalibrate)
             else -> { // ACTION_MONITOR (app opened / foregrounded) or system restart
-                lastForegroundWallMs = System.currentTimeMillis()
+                val now = System.currentTimeMillis()
+                lastForegroundWallMs = now
                 acquireMonitorWakeLock()
+                notify(currentStatusText())
                 Log.i(TAG, "Monitoring armed; wakeLock held=${wakeLock?.isHeld == true}")
+                if (now - lastArmLogMs >= ARM_LOG_THROTTLE_MS) { // button glances would flood the log
+                    lastArmLogMs = now
+                    LifecycleLog.append(this, "armed (app opened)")
+                }
             }
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "Service destroyed (diving=${engine?.displayState?.phase == DivePhase.DIVING}, activityVisible=$activityVisible)")
+        val diving = engine?.displayState?.phase == DivePhase.DIVING
+        Log.i(TAG, "Service destroyed (diving=$diving, activityVisible=$activityVisible)")
+        LifecycleLog.append(this, "service destroyed (diving=$diving, appVisible=$activityVisible)")
         sensorManager?.unregisterListener(pressureListener)
         sensorManager?.unregisterListener(tempListener)
         samsungSource?.stop()
@@ -336,12 +477,47 @@ class DiveService : Service() {
         super.onDestroy()
     }
 
+    /** Why did earlier instances of this process die? Shown in the probe and logged. */
+    private fun captureExitHistory() {
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val lines = runCatching { am.getHistoricalProcessExitReasons(packageName, 0, 6) }
+            .getOrDefault(emptyList())
+            .map { info ->
+                val at = STAMP_FMT.format(Instant.ofEpochMilli(info.timestamp).atZone(ZoneId.systemDefault()))
+                val desc = info.description?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""
+                "$at ${exitReasonName(info.reason)}$desc"
+            }
+        processExitHistory.value = lines
+        lines.forEach { Log.i(TAG, "process exit history: $it") }
+    }
+
+    private fun exitReasonName(reason: Int): String = when (reason) {
+        ApplicationExitInfo.REASON_EXIT_SELF -> "exited itself"
+        ApplicationExitInfo.REASON_SIGNALED -> "killed by signal"
+        ApplicationExitInfo.REASON_LOW_MEMORY -> "LOW-MEMORY kill"
+        ApplicationExitInfo.REASON_CRASH -> "CRASH"
+        ApplicationExitInfo.REASON_CRASH_NATIVE -> "NATIVE CRASH"
+        ApplicationExitInfo.REASON_ANR -> "ANR"
+        ApplicationExitInfo.REASON_INITIALIZATION_FAILURE -> "init failure"
+        ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "permission change"
+        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "EXCESSIVE-RESOURCE kill"
+        ApplicationExitInfo.REASON_USER_REQUESTED -> "force-stopped by user"
+        ApplicationExitInfo.REASON_USER_STOPPED -> "user stopped"
+        ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "dependency died"
+        ApplicationExitInfo.REASON_OTHER -> "killed by system (other)"
+        ApplicationExitInfo.REASON_FREEZER -> "frozen by system"
+        15 -> "package state change"
+        16 -> "package updated"
+        else -> "reason $reason"
+    }
+
     private fun buildEngine(
         settings: DiveSettings,
         tissue: TissueState,
         cnsFraction: Double,
         surfaceBar: Double?,
-    ) = DiveEngine(buildConfig(settings), tissue, cnsFraction, surfaceBar)
+        memory: SurfaceMemory? = null,
+    ) = DiveEngine(buildConfig(settings), tissue, cnsFraction, surfaceBar, memory)
 
     private fun buildConfig(settings: DiveSettings): DiveEngineConfig =
         // Detection thresholds are the engine defaults (0.3 m start, shallow and
@@ -403,15 +579,13 @@ class DiveService : Service() {
             .forEach { sm.registerListener(tempListener, it, SensorManager.SENSOR_DELAY_NORMAL) }
     }
 
+    /** Creates the monitoring wake lock on first use; re-acquiring refreshes its timeout. */
     private fun acquireMonitorWakeLock() {
-        if (wakeLock == null) {
-            wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
-                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DiveMaster:monitor")
-                .apply {
-                    setReferenceCounted(false)
-                    acquire(MAX_WAKELOCK_MS)
-                }
-        }
+        val lock = wakeLock ?: (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DiveMaster:monitor")
+            .apply { setReferenceCounted(false) }
+            .also { wakeLock = it }
+        lock.acquire(MAX_WAKELOCK_MS)
     }
 
     private fun updateDiveMode(diving: Boolean) {
@@ -419,7 +593,7 @@ class DiveService : Service() {
         if (diving && !diveModeActive) {
             diveModeActive = true
             acquireMonitorWakeLock() // ensure held even if a long idle had released it
-            notify("Dive in progress")
+            notify(currentStatusText())
             if (!activityVisible) {
                 // Best effort: recent-foreground grace often allows this; when the
                 // OS blocks it the ongoing notification is the way back in.
@@ -429,14 +603,14 @@ class DiveService : Service() {
             }
         } else if (!diving && diveModeActive) {
             diveModeActive = false
-            notify(if (simulatorRunning.value) "Simulated dive running" else "Surface monitoring")
+            notify(currentStatusText())
         }
     }
 
     private fun startSimulation() {
         if (simJob != null) return
         simulatorRunning.value = true
-        notify("Simulated dive running")
+        notify(currentStatusText())
         simJob = scope.launch {
             val settings = SettingsRepository(this@DiveService).settings.first()
             val converter = DepthConverter(settings.waterType)
@@ -459,7 +633,7 @@ class DiveService : Service() {
                 delay(1000L / SIM_TIME_SCALE)
             }
             simulatorRunning.value = false
-            notify("Surface monitoring")
+            notify(currentStatusText())
         }.also { job -> job.invokeOnCompletion { simJob = null } }
     }
 
@@ -470,7 +644,7 @@ class DiveService : Service() {
         if (simulatorRunning.value) {
             simulatorRunning.value = false
             inputs.trySend(Input.Abort)
-            notify("Surface monitoring")
+            notify(currentStatusText())
         }
     }
 
@@ -480,8 +654,25 @@ class DiveService : Service() {
         )
     }
 
-    private fun buildNotification(text: String): Notification =
-        NotificationCompat.Builder(this, CHANNEL_ID)
+    /** What the ongoing notification should say right now. */
+    private fun currentStatusText(): String {
+        val state = engine?.displayState
+        return when {
+            state?.phase == DivePhase.DIVING ->
+                if (state.startedUnderwater) "Dive in progress · LATE START" else "Dive in progress"
+
+            simulatorRunning.value -> "Simulated dive running"
+            state?.startCheckActive == true -> "Checking whether underwater…"
+            else -> {
+                val until = Instant.ofEpochMilli(lastForegroundWallMs + MONITOR_IDLE_STOP_MS)
+                    .atZone(ZoneId.systemDefault())
+                "Watching for a dive · auto-off ${TIME_FMT.format(until)} if idle"
+            }
+        }
+    }
+
+    private fun buildNotification(text: String): Notification {
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_dive)
             .setContentTitle("DiveMaster")
             .setContentText(text)
@@ -494,7 +685,25 @@ class DiveService : Service() {
                     PendingIntent.FLAG_IMMUTABLE,
                 ),
             )
-            .build()
+        val state = engine?.displayState
+        if (state != null && (state.startedUnderwater || state.startCheckActive)) {
+            // Escape hatch for the one false positive the cold-start rules can
+            // produce (a boat deck after a drive down from altitude). Lives in
+            // the notification stream — not under the touch-locked dive screen —
+            // so water on the display cannot trigger it.
+            builder.addAction(
+                0,
+                "Not underwater — recalibrate",
+                PendingIntent.getForegroundService(
+                    this,
+                    1,
+                    Intent(this, DiveService::class.java).setAction(ACTION_RECALIBRATE),
+                    PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
+        }
+        return builder.build()
+    }
 
     private fun notify(text: String) {
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(text))
@@ -507,15 +716,21 @@ class DiveService : Service() {
         private const val SIM_TIME_SCALE = 4L
         private const val SIM_WATER_TEMP_C = 24.0
         private const val MAX_WAKELOCK_MS = 6L * 60 * 60 * 1000
-        private const val MONITOR_IDLE_STOP_MS = 20L * 60 * 1000
+        private const val WAKELOCK_REFRESH_MS = 60_000L
+        private const val MONITOR_IDLE_STOP_MS = 3L * 60 * 60 * 1000
         private const val SENSOR_STALE_MS = 5_000L
         private const val LOW_BATTERY_PCT = 15
         private const val NATIVE_DEPTH_FRESH_MS = 3_000L
         private const val WATER_TEMP_FRESH_MS = 60_000L
+        private const val SURFACE_MEMORY_WRITE_MS = 60_000L
+        private const val ARM_LOG_THROTTLE_MS = 5L * 60 * 1000
+        private val TIME_FMT = DateTimeFormatter.ofPattern("HH:mm")
+        private val STAMP_FMT = DateTimeFormatter.ofPattern("MM-dd HH:mm")
 
         const val ACTION_MONITOR = "com.ochakov.divemaster.MONITOR"
         const val ACTION_START_SIM = "com.ochakov.divemaster.START_SIM"
         const val ACTION_STOP_SIM = "com.ochakov.divemaster.STOP_SIM"
+        const val ACTION_RECALIBRATE = "com.ochakov.divemaster.RECALIBRATE"
 
         val displayState = MutableStateFlow<DiveDisplayState?>(null)
         val simulatorRunning = MutableStateFlow(false)
@@ -528,6 +743,12 @@ class DiveService : Service() {
 
         /** True while the native depth sensor (not the barometer) feeds the engine. */
         val nativeDepthDriving = MutableStateFlow(false)
+
+        /** Last remembered atmospheric pressure (bar) and when it was written (epoch ms). */
+        val rememberedSurface = MutableStateFlow<Pair<Double, Long>?>(null)
+
+        /** The OS's record of why earlier instances of this process died, newest first. */
+        val processExitHistory = MutableStateFlow<List<String>>(emptyList())
 
         @Volatile
         var activityVisible = false

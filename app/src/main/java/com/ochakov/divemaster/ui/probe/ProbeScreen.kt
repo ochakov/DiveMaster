@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +32,8 @@ import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
+import com.ochakov.divemaster.service.DiveService
+import com.ochakov.divemaster.service.LifecycleLog
 import com.ochakov.divemaster.service.SamsungDepthSource
 import com.ochakov.divemaster.ui.theme.DiveAmber
 import com.ochakov.divemaster.ui.theme.DiveGreen
@@ -74,6 +77,11 @@ fun ProbeScreen() {
     val depthMax = remember { mutableStateMapOf<String, Float>() }
     var ssensorGranted by remember { mutableStateOf(false) }
     var depthCandidates by remember { mutableStateOf(listOf<String>()) }
+    // Service history: why was nothing running at water entry? Our own idle
+    // stand-down shows in the lifecycle log; an OS kill in the exit history.
+    val exitHistory by DiveService.processExitHistory.collectAsState()
+    val rememberedSurface by DiveService.rememberedSurface.collectAsState()
+    val lifecycleLog = remember { LifecycleLog.read(context) }
 
     DisposableEffect(Unit) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -429,6 +437,49 @@ fun ProbeScreen() {
                         textAlign = TextAlign.Center,
                     )
                 }
+            }
+
+            item { Spacer(Modifier.height(8.dp)) }
+            item { Text("SERVICE HISTORY", style = MaterialTheme.typography.caption2, color = MaterialTheme.colors.secondary) }
+            item {
+                val mem = rememberedSurface
+                Text(
+                    if (mem == null) {
+                        "Remembered surface: none yet"
+                    } else {
+                        val ageMin = ((System.currentTimeMillis() - mem.second) / 60_000L).coerceAtLeast(0)
+                        "Remembered surface: %.1f hPa · %d min ago".format(mem.first * 1000, ageMin)
+                    },
+                    style = MaterialTheme.typography.caption2,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            item {
+                Text(
+                    if (exitHistory.isEmpty()) "No process exits recorded by the OS" else "Process exits (OS record):",
+                    style = MaterialTheme.typography.caption2,
+                    color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                )
+            }
+            items(exitHistory.size) { i ->
+                Text(exitHistory[i], fontSize = 9.sp, color = DiveAmber, textAlign = TextAlign.Center)
+            }
+            item {
+                Text(
+                    if (lifecycleLog.isEmpty()) "No service log yet" else "Service log (newest first):",
+                    style = MaterialTheme.typography.caption2,
+                    color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                )
+            }
+            items(lifecycleLog.size) { i ->
+                Text(
+                    lifecycleLog[i],
+                    fontSize = 9.sp,
+                    color = MaterialTheme.colors.onBackground.copy(alpha = 0.6f),
+                    textAlign = TextAlign.Center,
+                )
             }
 
             item { Spacer(Modifier.height(8.dp)) }

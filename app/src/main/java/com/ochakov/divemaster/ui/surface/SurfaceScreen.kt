@@ -107,6 +107,17 @@ fun SurfaceScreen(
                     )
                 }
             }
+            if (engineState?.startCheckActive == true) {
+                item {
+                    Text(
+                        "Pressure is above the remembered surface — checking whether underwater…",
+                        style = MaterialTheme.typography.caption2,
+                        color = DiveAmber,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
             if (diving) {
                 item {
                     Chip(

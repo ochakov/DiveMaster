@@ -54,6 +54,7 @@ class DiveSyncPublisher(context: Context, private val dao: DiveDao) {
                 dataMap.putDouble(DiveSyncKeys.KEY_SURFACE_MBAR, dive.surfacePressureMbar)
                 dataMap.putInt(DiveSyncKeys.KEY_GF_LOW, dive.gfLow)
                 dataMap.putInt(DiveSyncKeys.KEY_GF_HIGH, dive.gfHigh)
+                dataMap.putBoolean(DiveSyncKeys.KEY_STARTED_UNDERWATER, dive.startedUnderwater)
                 dataMap.putAsset(
                     DiveSyncKeys.KEY_SAMPLES,
                     Asset.createFromBytes(DiveTransferCodec.encodeSamples(samples)),

@@ -118,6 +118,11 @@ private fun DiveContent(state: DiveDisplayState, metric: Boolean) {
             if (state.simulated) {
                 Text("SIM", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DiveAmber)
             }
+            if (state.startedUnderwater) {
+                // App (re)started underwater: clock and tissue loading began at
+                // the restart, so the NDL is optimistic by the time missed.
+                Text("LATE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DiveAmber)
+            }
             if (nativeDepth && !state.simulated) {
                 Text("S-DEPTH", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DiveCyan)
             }

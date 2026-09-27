@@ -85,8 +85,19 @@ class DiveSessionRecorder(
                         surfacePressureMbar = event.surfacePressureBar * 1000.0,
                         gfLow = (settings.gradientFactors.low * 100).roundToInt(),
                         gfHigh = (settings.gradientFactors.high * 100).roundToInt(),
+                        startedUnderwater = event.startedUnderwater,
                     )
                     currentDive = dive.copy(id = dao.insertDive(dive))
+                }
+
+                is EngineEvent.SurfaceReferenceCorrected -> currentDive?.let { dive ->
+                    // The engine found its frozen reference too high (or, for a
+                    // guessed one, too low): re-base every sample written so far
+                    // and record the corrected surface pressure.
+                    dao.shiftSampleDepths(dive.id, event.depthShiftM)
+                    val corrected = dive.copy(surfacePressureMbar = event.surfacePressureBar * 1000.0)
+                    dao.updateDive(corrected)
+                    currentDive = corrected
                 }
 
                 is EngineEvent.SampleRecorded -> currentDive?.let { dive ->

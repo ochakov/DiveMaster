@@ -9,6 +9,14 @@ data class PressureSample(
     val tempC: Double? = null,
 )
 
+/**
+ * The last atmospheric pressure the host was confident about, and how old it
+ * is at engine construction. A cold-started engine judges its first reading
+ * against it so a restart underwater is recognised as such (see
+ * [DiveEngine]'s cold-start rules).
+ */
+data class SurfaceMemory(val pressureBar: Double, val ageSec: Double)
+
 enum class DivePhase { SURFACE, DIVING }
 
 /**
@@ -53,11 +61,30 @@ data class DiveDisplayState(
     val safetyStopRemainingSec: Int = 0,
     val safetyStopMinDepthM: Double = 4.0,
     val safetyStopMaxDepthM: Double = 6.0,
+    /**
+     * The active dive began before the engine did (app restarted underwater):
+     * its clock and tissue loading start at the restart, so the NDL is
+     * optimistic by however long the diver was down before it.
+     */
+    val startedUnderwater: Boolean = false,
+    /** Cold start undecided: watching whether the reading moves like water. */
+    val startCheckActive: Boolean = false,
+    /**
+     * The surface reference came from a real surface reading or a fresh
+     * memory, with no cold-start suspicion pending — safe to remember as
+     * atmospheric pressure and safe to rebuild the engine on.
+     */
+    val referenceTrusted: Boolean = true,
 )
 
 /** Storage-relevant things that happened while processing one sample. */
 sealed interface EngineEvent {
-    data class DiveStarted(val startEpochMs: Long, val surfacePressureBar: Double) : EngineEvent
+    data class DiveStarted(
+        val startEpochMs: Long,
+        val surfacePressureBar: Double,
+        /** See [DiveDisplayState.startedUnderwater]. */
+        val startedUnderwater: Boolean = false,
+    ) : EngineEvent
 
     data class SampleRecorded(
         val tOffsetSec: Int,
@@ -65,6 +92,17 @@ sealed interface EngineEvent {
         val tempC: Double?,
         /** Null for backfilled pre-confirmation samples and while NDL is unlimited. */
         val ndlMin: Double?,
+    ) : EngineEvent
+
+    /**
+     * The frozen reference moved mid-dive (see [DiveEngine]); every sample
+     * recorded so far for this dive is [depthShiftM] deeper than written
+     * (negative = shallower) and the dive's surface pressure is now
+     * [surfacePressureBar].
+     */
+    data class SurfaceReferenceCorrected(
+        val surfacePressureBar: Double,
+        val depthShiftM: Double,
     ) : EngineEvent
 
     data class DiveEnded(

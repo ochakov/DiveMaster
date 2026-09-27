@@ -1,5 +1,6 @@
 package com.ochakov.divemaster.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -18,6 +19,11 @@ data class DiveEntity(
     val surfacePressureMbar: Double,
     val gfLow: Int,
     val gfHigh: Int,
+    /**
+     * The app was (re)started underwater and this dive's clock began then:
+     * its first minutes are missing and its NDL trace is optimistic.
+     */
+    @ColumnInfo(defaultValue = "0") val startedUnderwater: Boolean = false,
 ) {
     val durationSec: Long get() = (endEpochMs - startEpochMs) / 1000
 }

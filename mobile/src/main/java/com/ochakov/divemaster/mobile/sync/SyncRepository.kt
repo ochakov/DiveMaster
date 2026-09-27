@@ -45,6 +45,7 @@ class SyncRepository(private val context: Context) {
                         surfacePressureMbar = map.getDouble(DiveSyncKeys.KEY_SURFACE_MBAR, 1013.25),
                         gfLow = map.getInt(DiveSyncKeys.KEY_GF_LOW, 40),
                         gfHigh = map.getInt(DiveSyncKeys.KEY_GF_HIGH, 85),
+                        startedUnderwater = map.getBoolean(DiveSyncKeys.KEY_STARTED_UNDERWATER, false),
                     ),
                 )
                 val bytes = dataClient.getFdForAsset(asset).await().inputStream.use { it.readBytes() }

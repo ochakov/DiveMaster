@@ -45,6 +45,10 @@ interface DiveDao {
     @Query("DELETE FROM samples WHERE diveId = :diveId AND tOffsetSec > :offsetSec")
     suspend fun trimSamplesAfter(diveId: Long, offsetSec: Int)
 
+    /** Re-bases a dive's profile after the engine corrected its surface reference mid-dive. */
+    @Query("UPDATE samples SET depthM = depthM + :shiftM WHERE diveId = :diveId")
+    suspend fun shiftSampleDepths(diveId: Long, shiftM: Double)
+
     @Query("DELETE FROM dives WHERE id = :diveId")
     suspend fun deleteDive(diveId: Long)
 

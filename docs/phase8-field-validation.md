@@ -63,6 +63,15 @@ behavior vs the certified computer's? Alerts felt when expected?
 | 1 | 2026-09-25 09:44 | 29.5 m / 12.6 m / 24:15 / 9 min | depth agrees (Ev); NDL + temp to record | 1456 samples for 1455 s = exactly 1 Hz, no gaps, recorded headless; ~5-min plateau at ~5 m (safety stop) visible in the profile; surface 1015 mbar; **min temp missing** |
 | 2 | 2026-09-25 15:08 | 8.6 m / 4.3 m / 38:20 / 501 min | depth agrees (Ev); NDL + temp to record | 2301 samples for 2300 s = exactly 1 Hz, no gaps; both dives synced to the phone with full profiles; **min temp missing** |
 
+| 3 | 2026-09-25 14:27 | (fragment) 3.8 m / 1.6 m / 3:07 / — | — | **Failure case.** The service had stood itself down on the boat (old 20-min idle guard); Ev relaunched the app underwater with the side button and the engine took the pressure at ~4.7 m as the surface ("1487 mbar"), so the fragment reads 4.7 m too shallow, shows negative depth where Ev rose above 4.7 m, and ended after 60 s of that. Fixed 2026-09-27: remembered surface pressure + cold-start rules, LATE START flag, mid-dive reference correction, 3 h idle guard (CLAUDE.md "Cold-start surface reference"). |
+
+### Next-dive checklist for the 2026-09-27 fixes (unverified in water)
+
+- [ ] Before the dive, open **Sensor probe → SERVICE HISTORY**: "Remembered surface" shows a value a few minutes old.
+- [ ] Open the app on the boat, leave it, gear up for > 20 min: it must still be running at water entry (notification says "Watching for a dive · auto-off HH:MM").
+- [ ] Deliberate test on a shallow dive: force-stop the app on the surface, descend to 3–5 m, relaunch with the side button. Expect: dive screen within ~5 s, correct depth (not ~0), amber **LATE** badge; afterwards the log entry says "Late start · began underwater" and its surface pressure matches the morning's.
+- [ ] After the day, SERVICE HISTORY: any "stood down" or OS kill lines explain every gap; note the exit reasons here.
+
 Open issue from these dives: **min temp "—" on both** — the engine keeps
 `minTempC` null only when every 1 Hz sample arrived with `tempC = null`, so
 no temperature sensor delivered a single event to the service during

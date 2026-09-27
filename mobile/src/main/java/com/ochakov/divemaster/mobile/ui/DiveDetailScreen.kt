@@ -73,7 +73,8 @@ fun DiveDetailScreen(diveId: Long, metric: Boolean) {
 
         val o2 = (currentDive.gasO2Fraction * 100).roundToInt()
         val minNdl = samples.mapNotNull { it.ndlMin }.minOrNull()
-        val stats = listOf(
+        val stats = listOfNotNull(
+            ("Late start" to "Began underwater").takeIf { currentDive.startedUnderwater },
             "Duration" to "%d:%02d min".format(currentDive.durationSec / 60, currentDive.durationSec % 60),
             "Max depth" to Units.depthWithUnit(currentDive.maxDepthM, metric),
             "Avg depth" to Units.depthWithUnit(currentDive.avgDepthM, metric),
