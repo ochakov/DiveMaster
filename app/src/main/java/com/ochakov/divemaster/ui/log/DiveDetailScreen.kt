@@ -37,6 +37,7 @@ import androidx.wear.compose.material.TimeText
 import com.ochakov.divemaster.data.db.DiveEntity
 import com.ochakov.divemaster.data.db.DiveMasterDatabase
 import com.ochakov.divemaster.data.db.SampleEntity
+import com.ochakov.divemaster.data.export.DiveCsv
 import com.ochakov.divemaster.data.settings.DiveSettings
 import com.ochakov.divemaster.data.settings.SettingsRepository
 import com.ochakov.divemaster.service.DiveSyncPublisher
@@ -50,11 +51,9 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlin.math.roundToInt
 
 private val DETAIL_DATE_FMT = DateTimeFormatter.ofPattern("d MMM yyyy · HH:mm")
-private val FILE_DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmm")
 
 @Composable
 fun DiveDetailScreen(diveId: Long, onDeleted: () -> Unit) {
@@ -225,35 +224,13 @@ private fun DepthChart(samples: List<SampleEntity>, maxDepthM: Double, modifier:
 }
 
 /**
- * Subsurface-importable CSV: comment header with dive metadata, then
- * time_sec,depth_m,temp_c,ndl_min rows. Locale.US keeps decimal points
- * valid regardless of device locale. Written to the app-specific external
- * dir (no permissions needed): pull via
- * `adb pull /sdcard/Android/data/com.ochakov.divemaster/files/`.
+ * Subsurface-importable CSV (format shared with the phone app in
+ * `DiveCsv`), written to the app-specific external dir (no permissions
+ * needed): pull via `adb pull /sdcard/Android/data/com.ochakov.divemaster/files/`.
  */
 private fun writeCsv(context: android.content.Context, dive: DiveEntity, samples: List<SampleEntity>): String {
-    val stamp = FILE_DATE_FMT.format(Instant.ofEpochMilli(dive.startEpochMs).atZone(ZoneId.systemDefault()))
     val dir = context.getExternalFilesDir(null) ?: context.filesDir
-    val file = File(dir, "DiveMaster_dive${dive.id}_$stamp.csv")
-    file.bufferedWriter().use { writer ->
-        writer.appendLine("# DiveMaster dive ${dive.id}")
-        writer.appendLine(
-            String.format(
-                Locale.US,
-                "# startEpochMs=%d endEpochMs=%d maxDepthM=%.2f avgDepthM=%.2f gasO2=%.2f gf=%d/%d water=%s surfaceMbar=%.1f lateStart=%d",
-                dive.startEpochMs, dive.endEpochMs, dive.maxDepthM, dive.avgDepthM,
-                dive.gasO2Fraction, dive.gfLow, dive.gfHigh, dive.waterType, dive.surfacePressureMbar,
-                if (dive.startedUnderwater) 1 else 0,
-            ),
-        )
-        writer.appendLine("time_sec,depth_m,temp_c,ndl_min")
-        for (sample in samples) {
-            val temp = sample.tempC?.let { String.format(Locale.US, "%.1f", it) } ?: ""
-            val ndl = sample.ndlMin?.let { String.format(Locale.US, "%.1f", it) } ?: ""
-            writer.appendLine(
-                String.format(Locale.US, "%d,%.2f,%s,%s", sample.tOffsetSec, sample.depthM, temp, ndl),
-            )
-        }
-    }
+    val file = File(dir, DiveCsv.fileName(dive))
+    file.bufferedWriter().use { DiveCsv.write(dive, samples, it) }
     return file.absolutePath
 }

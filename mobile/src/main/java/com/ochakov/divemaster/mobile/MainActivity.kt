@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.ochakov.divemaster.data.db.DiveMasterDatabase
 import com.ochakov.divemaster.data.settings.DiveSettings
 import com.ochakov.divemaster.data.settings.SettingsRepository
+import com.ochakov.divemaster.mobile.export.DiveExporter
 import com.ochakov.divemaster.mobile.sync.SyncRepository
 import com.ochakov.divemaster.mobile.ui.DiveDetailScreen
 import com.ochakov.divemaster.mobile.ui.DiveListScreen
@@ -49,6 +50,7 @@ fun AppRoot() {
     val dao = remember { DiveMasterDatabase.get(context).diveDao() }
     val syncRepository = remember { SyncRepository(context) }
     val settingsRepository = remember { SettingsRepository(context) }
+    val exporter = remember { DiveExporter(context, dao) }
     val settings by settingsRepository.settings.collectAsState(initial = DiveSettings())
     val dives by dao.observeAll().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
@@ -56,6 +58,7 @@ fun AppRoot() {
     var selectedDiveId by rememberSaveable { mutableStateOf(-1L) }
     var syncStatus by remember { mutableStateOf<String?>(null) }
     var syncing by remember { mutableStateOf(false) }
+    var exporting by remember { mutableStateOf(false) }
 
     fun runSync() {
         if (syncing) return
@@ -68,6 +71,23 @@ fun AppRoot() {
                 else -> "Imported $imported dive${if (imported == 1) "" else "s"}"
             }
             syncing = false
+        }
+    }
+
+    // Export through the share sheet: the open dive as a CSV, or the whole
+    // log as a ZIP of per-dive CSVs (each one Subsurface-importable).
+    fun runExport() {
+        if (exporting) return
+        scope.launch {
+            exporting = true
+            runCatching {
+                if (selectedDiveId >= 0) {
+                    if (!exporter.shareDive(selectedDiveId)) syncStatus = "Dive not found"
+                } else if (exporter.shareAll() == 0) {
+                    syncStatus = "Nothing to export yet"
+                }
+            }.onFailure { syncStatus = "Export failed: ${it.message}" }
+            exporting = false
         }
     }
 
@@ -88,6 +108,11 @@ fun AppRoot() {
                     ) { Text(if (settings.metricUnits) "m" else "ft") }
                     TextButton(onClick = { runSync() }, enabled = !syncing) {
                         Text(if (syncing) "…" else "Sync")
+                    }
+                    if (selectedDiveId >= 0 || dives.isNotEmpty()) {
+                        TextButton(onClick = { runExport() }, enabled = !exporting) {
+                            Text(if (selectedDiveId >= 0) "Export" else "Export all")
+                        }
                     }
                 },
             )
