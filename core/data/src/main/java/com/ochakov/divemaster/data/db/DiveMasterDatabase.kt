@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [DiveEntity::class, SampleEntity::class, TissueStateEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class DiveMasterDatabase : RoomDatabase() {
@@ -26,13 +26,28 @@ abstract class DiveMasterDatabase : RoomDatabase() {
             }
         }
 
+        /** v3: battery, safety-stop result, max ascent rate, CNS, app version, entry/exit position. */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                for (column in listOf(
+                    "batteryStartPct INTEGER", "batteryEndPct INTEGER",
+                    "safetyStopResult TEXT", "maxAscentRateMPerMin REAL",
+                    "cnsEndFraction REAL", "appVersion TEXT",
+                    "entryLat REAL", "entryLon REAL", "entryAccuracyM REAL", "entryFixEpochMs INTEGER",
+                    "exitLat REAL", "exitLon REAL", "exitAccuracyM REAL", "exitFixEpochMs INTEGER",
+                )) {
+                    db.execSQL("ALTER TABLE dives ADD COLUMN $column")
+                }
+            }
+        }
+
         fun get(context: Context): DiveMasterDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     DiveMasterDatabase::class.java,
                     "divemaster.db",
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             }
     }
 }

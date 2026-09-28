@@ -37,16 +37,27 @@ class MainActivity : ComponentActivity() {
         // screen over the keyguard instead of the watch face.
         setShowWhenLocked(true)
         setTurnScreenOn(true)
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0)
-        }
+        requestMissingPermissions()
         setContent {
             DiveMasterTheme {
                 DiveMasterRoot()
             }
         }
+    }
+
+    /**
+     * Notifications (the ongoing dive-engine notification) and location (dive
+     * entry/exit position). Fine location must be requested together with
+     * coarse on API 31+ or the request is ignored. Everything works without
+     * them; a denied location simply leaves dives unpositioned.
+     */
+    private fun requestMissingPermissions() {
+        val wanted = buildList {
+            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (wanted.isNotEmpty()) requestPermissions(wanted.toTypedArray(), 0)
     }
 
     override fun onStart() {

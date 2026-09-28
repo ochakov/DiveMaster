@@ -9,9 +9,10 @@ import java.util.Locale
 
 /**
  * Subsurface-importable CSV, shared by the watch (file in its app-specific
- * dir, pulled over adb) and the phone (share sheet / ZIP): a comment header
+ * dir, pulled over adb) and the phone (share sheet / ZIP): comment headers
  * with the dive's metadata, then `time_sec,depth_m,temp_c,ndl_min` rows.
- * Locale.US keeps decimal points valid regardless of device locale.
+ * Locale.US keeps decimal points valid regardless of device locale; absent
+ * metadata is written as `-`.
  */
 object DiveCsv {
     private val FILE_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd_HHmm")
@@ -33,6 +34,17 @@ object DiveCsv {
                 if (dive.startedUnderwater) 1 else 0,
             ),
         )
+        out.appendLine(
+            "# batteryStart=${dive.batteryStartPct ?: "-"} batteryEnd=${dive.batteryEndPct ?: "-"}" +
+                " safetyStop=${dive.safetyStopResult ?: "-"}" +
+                " maxAscentMPerMin=${dive.maxAscentRateMPerMin?.let { String.format(Locale.US, "%.1f", it) } ?: "-"}" +
+                " cnsEnd=${dive.cnsEndFraction?.let { String.format(Locale.US, "%.3f", it) } ?: "-"}" +
+                " app=${dive.appVersion ?: "-"}",
+        )
+        out.appendLine(
+            "# entryLat=${coord(dive.entryLat)} entryLon=${coord(dive.entryLon)} entryFixEpochMs=${dive.entryFixEpochMs ?: "-"}" +
+                " exitLat=${coord(dive.exitLat)} exitLon=${coord(dive.exitLon)} exitFixEpochMs=${dive.exitFixEpochMs ?: "-"}",
+        )
         out.appendLine("time_sec,depth_m,temp_c,ndl_min")
         for (sample in samples) {
             val temp = sample.tempC?.let { String.format(Locale.US, "%.1f", it) } ?: ""
@@ -42,5 +54,7 @@ object DiveCsv {
     }
 
     fun render(dive: DiveEntity, samples: List<SampleEntity>): String =
-        StringBuilder(samples.size * 24 + 256).also { write(dive, samples, it) }.toString()
+        StringBuilder(samples.size * 24 + 512).also { write(dive, samples, it) }.toString()
+
+    private fun coord(value: Double?): String = value?.let { String.format(Locale.US, "%.6f", it) } ?: "-"
 }

@@ -13,6 +13,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Dive entry/exit position (one fix at the first surface touch). The
+         service is already in the foreground; the location type lets it obtain
+         that fix even when the screen is off after surfacing. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <!-- Samsung private depth/water-temp sensors (Galaxy Watch Ultra). Signature|privileged:
          granted only to platform-signed/privileged installs; everywhere else the sensors read
          null and the app uses the barometer. Declaring it is harmless on other watches. -->
@@ -45,7 +51,7 @@
         <service
             android:name=".service.DiveService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse|location">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="dive-computer-tracking" />

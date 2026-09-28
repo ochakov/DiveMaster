@@ -1,5 +1,7 @@
 package com.ochakov.divemaster.mobile.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,9 +36,37 @@ import com.ochakov.divemaster.data.db.SampleEntity
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.roundToInt
 
 private val DETAIL_DATE_FMT = DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy · HH:mm")
+
+private fun stopResultLabel(name: String): String = when (name) {
+    "DONE" -> "Done"
+    "INCOMPLETE" -> "Incomplete"
+    "NOT_REQUIRED" -> "Not required"
+    else -> name
+}
+
+private fun ascentRateText(mPerMin: Double, metric: Boolean): String =
+    if (metric) String.format(Locale.US, "%.1f m/min", mPerMin)
+    else String.format(Locale.US, "%.0f ft/min", mPerMin * 3.28084)
+
+/** Exit fix preferred; the entry position is a last-known one and says so. Returns (label, lat, lon). */
+private fun position(dive: DiveEntity): Triple<String, Double, Double>? {
+    fun label(lat: Double, lon: Double, acc: Double?, suffix: String) =
+        String.format(Locale.US, "%.5f, %.5f", lat, lon) +
+            (acc?.takeIf { it >= 0 }?.let { String.format(Locale.US, " (±%.0f m)", it) } ?: "") + suffix
+    val exitLat = dive.exitLat
+    val exitLon = dive.exitLon
+    if (exitLat != null && exitLon != null) return Triple(label(exitLat, exitLon, dive.exitAccuracyM, ""), exitLat, exitLon)
+    val entryLat = dive.entryLat
+    val entryLon = dive.entryLon
+    if (entryLat != null && entryLon != null) {
+        return Triple(label(entryLat, entryLon, dive.entryAccuracyM, " (entry)"), entryLat, entryLon)
+    }
+    return null
+}
 
 @Composable
 fun DiveDetailScreen(diveId: Long, metric: Boolean) {
@@ -85,6 +116,13 @@ fun DiveDetailScreen(diveId: Long, metric: Boolean) {
             "Water type" to currentDive.waterType,
             "Surface pressure" to "%.0f mbar".format(currentDive.surfacePressureMbar),
             "Samples" to "${samples.size}",
+            ("Battery" to "${currentDive.batteryStartPct?.let { "$it%" } ?: "?"} → ${currentDive.batteryEndPct?.let { "$it%" } ?: "?"}")
+                .takeIf { currentDive.batteryStartPct != null || currentDive.batteryEndPct != null },
+            currentDive.safetyStopResult?.let { "Safety stop" to stopResultLabel(it) },
+            currentDive.maxAscentRateMPerMin?.let { "Max ascent rate" to ascentRateText(it, metric) },
+            currentDive.cnsEndFraction?.let { "CNS at end" to "%.0f %%".format(it * 100) },
+            position(currentDive)?.let { "Position" to it.first },
+            currentDive.appVersion?.let { "Recorded by" to "DiveMaster ${currentDive.appVersion}" },
         )
         stats.chunked(2).forEach { rowPair ->
             Row(Modifier.fillMaxWidth()) {
@@ -99,6 +137,12 @@ fun DiveDetailScreen(diveId: Long, metric: Boolean) {
                     }
                 }
             }
+        }
+        position(currentDive)?.let { (_, lat, lon) ->
+            TextButton(onClick = {
+                val uri = Uri.parse("geo:$lat,$lon?q=$lat,$lon(DiveMaster dive)")
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+            }) { Text("Open position in Maps") }
         }
     }
 }

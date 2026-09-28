@@ -1,5 +1,6 @@
 package com.ochakov.divemaster.service
 
+import android.Manifest
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.app.Notification
@@ -9,6 +10,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -75,6 +78,7 @@ class DiveService : Service() {
         data class NativeDepth(val timestampMs: Long, val depthM: Double) : Input
         data object Abort : Input
         data object Recalibrate : Input
+        data class ExitLocation(val fix: LocationFix) : Input
         data class SettingsChanged(val settings: DiveSettings) : Input
     }
 
@@ -92,6 +96,11 @@ class DiveService : Service() {
     private var alertSounder: AlertSounder? = null
     private var diveModeActive = false
     private var checkNotified = false
+    private var endPendingSeen = false
+    private val location by lazy { LocationCapture(this) }
+    private val appVersion: String by lazy {
+        runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
+    }
 
     @Volatile private var lastSampleWallMs = 0L
     @Volatile private var lastForegroundWallMs = 0L
@@ -152,7 +161,7 @@ class DiveService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Surface monitoring"))
+        startForegroundCompat(buildNotification("Surface monitoring"))
         serviceRunning.value = true
         alertSounder = AlertSounder(this)
         lastForegroundWallMs = System.currentTimeMillis()
@@ -166,7 +175,7 @@ class DiveService : Service() {
         scope.launch {
             val repository = SettingsRepository(this@DiveService)
             var settings = repository.settings.first()
-            val rec = DiveSessionRecorder(dao, settings)
+            val rec = DiveSessionRecorder(dao, settings, appVersion)
             val restored = rec.restore()
             recorder = rec
             val syncPublisher = DiveSyncPublisher(this@DiveService, dao)
@@ -213,7 +222,9 @@ class DiveService : Service() {
                 lastSampleWallMs = System.currentTimeMillis()
                 nativeDepthDriving.value = fromNativeDepth
                 val events = eng.onSample(sample)
-                rec.handle(events, eng, System.currentTimeMillis())
+                rec.handle(events, eng, System.currentTimeMillis(), batteryPct.value ?: readBatteryPct()) {
+                    if (simulatorRunning.value) null else location.lastKnown()
+                }
                 val state = eng.displayState
                 displayState.value = state.copy(simulated = simulatorRunning.value)
                 updateDiveMode(state.phase == DivePhase.DIVING)
@@ -241,6 +252,14 @@ class DiveService : Service() {
                     checkNotified = state.startCheckActive
                     notify(currentStatusText())
                 }
+                // Exit position: one fresh fix per surfacing, asked for the moment
+                // the wrist first touches the surface — GPS needs sky, and the
+                // 60 s end hold gives it time. Delivered through the channel so
+                // the recorder is only ever touched from this coroutine.
+                if (state.endPending && !endPendingSeen && !simulatorRunning.value) {
+                    location.requestFix { fix -> inputs.trySend(Input.ExitLocation(fix)) }
+                }
+                endPendingSeen = state.endPending
 
                 // Diagnostics: prove headless sampling/detection works even with
                 // the screen forced off in water. Events always logged; depth
@@ -328,6 +347,16 @@ class DiveService : Service() {
                         rec.handle(events, eng, System.currentTimeMillis())
                         displayState.value = eng.displayState.copy(simulated = simulatorRunning.value)
                         updateDiveMode(false)
+                    }
+
+                    is Input.ExitLocation -> {
+                        val fix = input.fix
+                        val republish = rec.recordExitLocation(fix)
+                        Log.i(TAG, "exit position %.5f, %.5f (+/-%.0f m)".format(fix.lat, fix.lon, fix.accuracyM))
+                        // Landed after the dive was finalized and published: publish again.
+                        if (republish != null) {
+                            dao.dive(republish)?.let { dive -> scope.launch { syncPublisher.publish(dive) } }
+                        }
                     }
 
                     Input.Recalibrate -> {
@@ -441,7 +470,9 @@ class DiveService : Service() {
                 val now = System.currentTimeMillis()
                 lastForegroundWallMs = now
                 acquireMonitorWakeLock()
-                notify(currentStatusText())
+                // Re-declares the foreground types too, so a location permission
+                // granted after the service started takes effect.
+                startForegroundCompat(buildNotification(currentStatusText()))
                 Log.i(TAG, "Monitoring armed; wakeLock held=${wakeLock?.isHeld == true}")
                 if (now - lastArmLogMs >= ARM_LOG_THROTTLE_MS) { // button glances would flood the log
                     lastArmLogMs = now
@@ -460,6 +491,7 @@ class DiveService : Service() {
         sensorManager?.unregisterListener(tempListener)
         samsungSource?.stop()
         samsungSource = null
+        location.cancel()
         nativeDepthDriving.value = false
         simJob?.cancel()
         val eng = engine
@@ -509,6 +541,33 @@ class DiveService : Service() {
         15 -> "package state change"
         16 -> "package updated"
         else -> "reason $reason"
+    }
+
+    private fun readBatteryPct(): Int? {
+        val pct = (getSystemService(Context.BATTERY_SERVICE) as BatteryManager)
+            .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        return if (pct in 1..100) pct else null
+    }
+
+    /**
+     * Foreground types: specialUse always (API 34+), location only while the
+     * runtime permission is granted — declaring it without the permission
+     * throws on API 34+. Any failure falls back to the location-less form.
+     */
+    private fun startForegroundCompat(notification: Notification) {
+        val locationGranted = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            .any { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+        val base = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
+        val withLocation = base or (if (locationGranted) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0)
+        if (withLocation != 0) {
+            try {
+                startForeground(NOTIFICATION_ID, notification, withLocation)
+                return
+            } catch (e: Exception) {
+                Log.w(TAG, "startForeground(types=$withLocation) failed; retrying without location", e)
+            }
+        }
+        if (base != 0) startForeground(NOTIFICATION_ID, notification, base) else startForeground(NOTIFICATION_ID, notification)
     }
 
     private fun buildEngine(

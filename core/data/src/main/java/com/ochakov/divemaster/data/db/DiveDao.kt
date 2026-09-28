@@ -49,6 +49,13 @@ interface DiveDao {
     @Query("UPDATE samples SET depthM = depthM + :shiftM WHERE diveId = :diveId")
     suspend fun shiftSampleDepths(diveId: Long, shiftM: Double)
 
+    /** The exit fix often lands after the dive is already finalized. */
+    @Query(
+        "UPDATE dives SET exitLat = :lat, exitLon = :lon, exitAccuracyM = :accuracyM, " +
+            "exitFixEpochMs = :fixEpochMs WHERE id = :diveId",
+    )
+    suspend fun updateExitLocation(diveId: Long, lat: Double, lon: Double, accuracyM: Double, fixEpochMs: Long)
+
     @Query("DELETE FROM dives WHERE id = :diveId")
     suspend fun deleteDive(diveId: Long)
 

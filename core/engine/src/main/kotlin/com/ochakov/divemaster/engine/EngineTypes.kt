@@ -41,6 +41,9 @@ enum class SafetyStopState {
     DONE,
 }
 
+/** How the safety stop turned out, recorded with the dive. */
+enum class SafetyStopResult { NOT_REQUIRED, DONE, INCOMPLETE }
+
 /** Everything the UI needs, refreshed once per sample. */
 data class DiveDisplayState(
     val phase: DivePhase = DivePhase.SURFACE,
@@ -75,6 +78,11 @@ data class DiveDisplayState(
      * atmospheric pressure and safe to rebuild the engine on.
      */
     val referenceTrusted: Boolean = true,
+    /**
+     * Diving, but the wrist has touched the surface and the end hold is
+     * running (the host requests the exit position on this edge).
+     */
+    val endPending: Boolean = false,
 )
 
 /** Storage-relevant things that happened while processing one sample. */
@@ -111,6 +119,11 @@ sealed interface EngineEvent {
         val maxDepthM: Double,
         val avgDepthM: Double,
         val minTempC: Double?,
+        /** Worst ascent rate seen during the dive (8 s window), m/min. */
+        val maxAscentRateMPerMin: Double = 0.0,
+        val safetyStopResult: SafetyStopResult = SafetyStopResult.NOT_REQUIRED,
+        /** CNS clock when the dive ended. */
+        val cnsFractionAtEnd: Double = 0.0,
     ) : EngineEvent
 
     /** The submersion never met the minimum dive duration; delete anything recorded. */

@@ -63,7 +63,8 @@ private fun DiveContent(state: DiveDisplayState, metric: Boolean) {
     val ndlText: String
     val ndlColor: Color
     when {
-        state.ndlMin.isInfinite() -> {
+        // Dive computers cap the readout; "4638'" during a safety stop is noise.
+        state.ndlMin.isInfinite() || state.ndlMin >= 100.0 -> {
             ndlText = "99+"
             ndlColor = DiveGreen
         }

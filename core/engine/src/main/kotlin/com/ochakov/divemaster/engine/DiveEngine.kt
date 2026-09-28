@@ -87,6 +87,10 @@ class DiveEngine(
     private var minTempC: Double? = null
     private var shallowSinceMs: Long? = null
 
+    /** Re-descent timer while an end is pending (see handleDiving). */
+    private var resubmergedSinceMs: Long? = null
+    private var maxAscentRateMPerMin = 0.0
+
     // Safety stop.
     private var stopArmed = false
     private var stopRemainingSec = config.safetyStopSeconds.toDouble()
@@ -168,7 +172,7 @@ class DiveEngine(
 
         when (phase) {
             DivePhase.SURFACE -> handleSurface(ts, depth, sample.tempC, events)
-            DivePhase.DIVING -> handleDiving(ts, p, depth, sample.tempC, dtSec, ndlSec, events)
+            DivePhase.DIVING -> handleDiving(ts, p, depth, rate, sample.tempC, dtSec, ndlSec, events)
         }
         // The still-water rule inside handleDiving may have moved the reference.
         if (phase == DivePhase.DIVING && surfaceBar != frozenSurfaceBar) {
@@ -197,6 +201,7 @@ class DiveEngine(
             startedUnderwater = startedUnderwater,
             startCheckActive = startCheck != null,
             referenceTrusted = referenceTrusted(),
+            endPending = phase == DivePhase.DIVING && shallowSinceMs != null,
         )
         return events
     }
@@ -301,6 +306,7 @@ class DiveEngine(
         referenceGuessed = false
         startedUnderwater = false
         shallowSinceMs = null
+        resubmergedSinceMs = null
         resetStartDetection()
         rateWindow.clear()
         stillWindow.clear()
@@ -313,6 +319,7 @@ class DiveEngine(
             startedUnderwater = false,
             startCheckActive = false,
             referenceTrusted = referenceTrusted(),
+            endPending = false,
         )
         return events
     }
@@ -336,6 +343,7 @@ class DiveEngine(
             durationSec = 0,
             safetyStop = SafetyStopState.NONE,
             startedUnderwater = false,
+            endPending = false,
         )
         return events
     }
@@ -378,6 +386,8 @@ class DiveEngine(
         depthTimeDt = 0.0
         minTempC = null
         shallowSinceMs = null
+        resubmergedSinceMs = null
+        maxAscentRateMPerMin = 0.0
         stopArmed = false
         stopRemainingSec = config.safetyStopSeconds.toDouble()
         stillWindow.clear()
@@ -399,12 +409,14 @@ class DiveEngine(
         ts: Long,
         p: Double,
         depth: Double,
+        rateMPerMin: Double,
         tempC: Double?,
         dtSec: Double,
         ndlSec: Double,
         events: MutableList<EngineEvent>,
     ) {
         accumulate(depth, tempC, dtSec)
+        if (rateMPerMin > maxAscentRateMPerMin) maxAscentRateMPerMin = rateMPerMin
         if (!stopArmed && maxDepthM >= config.safetyStopRequiredBelowM) stopArmed = true
         if (stopArmed && stopRemainingSec > 0.0 &&
             depth >= config.safetyStopMinDepthM && depth <= config.safetyStopMaxDepthM
@@ -417,12 +429,26 @@ class DiveEngine(
             tempC,
             if (ndlSec.isInfinite()) null else ndlSec / 60.0,
         )
+        // End of dive: the first surface touch starts the hold and fixes the
+        // end time. Splashes while climbing out (0.2–0.5 m for a few seconds)
+        // don't reset it — only "diving again", past the start depth and
+        // sustained, cancels it and the dive carries on.
         if (depth < config.endDepthM) {
             if (shallowSinceMs == null) shallowSinceMs = ts
-            if (ts - shallowSinceMs!! >= config.endHoldSec * 1000L) endDive(events)
-        } else {
-            shallowSinceMs = null
+            resubmergedSinceMs = null
+        } else if (shallowSinceMs != null) {
+            if (depth >= config.endCancelDepthM) {
+                if (resubmergedSinceMs == null) resubmergedSinceMs = ts
+                if (ts - resubmergedSinceMs!! >= config.endCancelHoldSec * 1000L) {
+                    shallowSinceMs = null
+                    resubmergedSinceMs = null
+                }
+            } else {
+                resubmergedSinceMs = null
+            }
         }
+        val pendingSinceMs = shallowSinceMs
+        if (pendingSinceMs != null && ts - pendingSinceMs >= config.endHoldSec * 1000L) endDive(events)
         if (phase == DivePhase.DIVING && referenceGuessed) watchStillWater(ts, p, depth, events)
     }
 
@@ -456,10 +482,19 @@ class DiveEngine(
             events += EngineEvent.DiveDiscarded
         } else {
             val avg = if (depthTimeDt > 0) depthTimeSum / depthTimeDt else maxDepthM
-            events += EngineEvent.DiveEnded(endMs, durationSec, maxDepthM, avg, minTempC)
+            val stopResult = when {
+                !stopArmed -> SafetyStopResult.NOT_REQUIRED
+                stopRemainingSec <= 0.0 -> SafetyStopResult.DONE
+                else -> SafetyStopResult.INCOMPLETE
+            }
+            events += EngineEvent.DiveEnded(
+                endMs, durationSec, maxDepthM, avg, minTempC,
+                maxAscentRateMPerMin, stopResult, cnsFraction,
+            )
         }
         phase = DivePhase.SURFACE
         shallowSinceMs = null
+        resubmergedSinceMs = null
         submergedSinceMs = null
         deepSinceMs = null
         pending.clear()

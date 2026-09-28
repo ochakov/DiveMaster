@@ -24,6 +24,15 @@ class DiveCsvTest {
         gfLow = 40,
         gfHigh = 85,
         startedUnderwater = true,
+        batteryStartPct = 87,
+        batteryEndPct = 71,
+        safetyStopResult = "DONE",
+        maxAscentRateMPerMin = 15.21,
+        cnsEndFraction = 0.0312,
+        appVersion = "0.9.2",
+        exitLat = 29.551234,
+        exitLon = 34.9501,
+        exitFixEpochMs = 70_000L,
     )
     private val samples = listOf(
         SampleEntity(diveId = 7, tOffsetSec = 0, depthM = 0.0, tempC = null, ndlMin = null),
@@ -31,7 +40,7 @@ class DiveCsvTest {
     )
 
     @Test
-    fun `header and rows follow the Subsurface layout`() {
+    fun `headers and rows follow the Subsurface layout`() {
         val lines = DiveCsv.render(dive, samples).trimEnd().lines()
         assertEquals("# DiveMaster dive 7", lines[0])
         assertEquals(
@@ -39,10 +48,27 @@ class DiveCsvTest {
                 "gf=40/85 water=EN13319 surfaceMbar=1015.2 lateStart=1",
             lines[1],
         )
-        assertEquals("time_sec,depth_m,temp_c,ndl_min", lines[2])
-        assertEquals("0,0.00,,", lines[3])
-        assertEquals("1,12.50,24.5,99.5", lines[4])
-        assertEquals(5, lines.size)
+        assertEquals("# batteryStart=87 batteryEnd=71 safetyStop=DONE maxAscentMPerMin=15.2 cnsEnd=0.031 app=0.9.2", lines[2])
+        assertEquals(
+            "# entryLat=- entryLon=- entryFixEpochMs=- exitLat=29.551234 exitLon=34.950100 exitFixEpochMs=70000",
+            lines[3],
+        )
+        assertEquals("time_sec,depth_m,temp_c,ndl_min", lines[4])
+        assertEquals("0,0.00,,", lines[5])
+        assertEquals("1,12.50,24.5,99.5", lines[6])
+        assertEquals(7, lines.size)
+    }
+
+    @Test
+    fun `missing metadata is written as a dash`() {
+        val bare = dive.copy(
+            batteryStartPct = null, batteryEndPct = null, safetyStopResult = null,
+            maxAscentRateMPerMin = null, cnsEndFraction = null, appVersion = null,
+            exitLat = null, exitLon = null, exitFixEpochMs = null,
+        )
+        val lines = DiveCsv.render(bare, samples).lines()
+        assertEquals("# batteryStart=- batteryEnd=- safetyStop=- maxAscentMPerMin=- cnsEnd=- app=-", lines[2])
+        assertEquals("# entryLat=- entryLon=- entryFixEpochMs=- exitLat=- exitLon=- exitFixEpochMs=-", lines[3])
     }
 
     @Test
@@ -55,7 +81,9 @@ class DiveCsvTest {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.GERMANY)
         try {
-            assertTrue(DiveCsv.render(dive, samples).contains("1,12.50,24.5,99.5"))
+            val csv = DiveCsv.render(dive, samples)
+            assertTrue(csv.contains("1,12.50,24.5,99.5"))
+            assertTrue(csv.contains("exitLat=29.551234"))
         } finally {
             Locale.setDefault(previous)
         }

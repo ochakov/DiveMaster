@@ -26,8 +26,19 @@ data class DiveEngineConfig(
     val startHoldSec: Int = 3,
     /** Dive ends after rising above this depth... */
     val endDepthM: Double = 0.2,
-    /** ...for this long (re-descending sooner continues the same dive). */
+    /**
+     * ...for this long. The hold starts at the first surface touch — that
+     * moment becomes the dive's end time — and keeps running through wrist
+     * splashes while climbing out; only "diving again" cancels it:
+     * [endCancelDepthM] sustained for [endCancelHoldSec] (Ev, 2026-09-28,
+     * after dive 6 showed 0.46 m splashes resetting the old any-sample rule
+     * and the dive clock running on while he floated).
+     */
     val endHoldSec: Int = 60,
+    /** Re-descent that cancels a pending end: past the start depth, by design. */
+    val endCancelDepthM: Double = 0.3,
+    /** ...sustained this long — a splash lasts seconds, a swim or descent longer. */
+    val endCancelHoldSec: Int = 10,
     /** Shorter dives are discarded. */
     val minDiveDurationSec: Int = 60,
     /** Safety-stop countdown length. */

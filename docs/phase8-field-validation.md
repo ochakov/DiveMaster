@@ -65,7 +65,18 @@ behavior vs the certified computer's? Alerts felt when expected?
 
 | 3 | 2026-09-25 14:27 | (fragment) 3.8 m / 1.6 m / 3:07 / — | — | **Failure case.** The service had stood itself down on the boat (old 20-min idle guard); Ev relaunched the app underwater with the side button and the engine took the pressure at ~4.7 m as the surface ("1487 mbar"), so the fragment reads 4.7 m too shallow, shows negative depth where Ev rose above 4.7 m, and ended after 60 s of that. Fixed 2026-09-27: remembered surface pressure + cold-start rules, LATE START flag, mid-dive reference correction, 3 h idle guard (CLAUDE.md "Cold-start surface reference"). |
 
+### What the exported CSVs of dives 1 and 2 showed (2026-09-28)
+
+- Both files end at their last sample with the 60 s surface hold never completed: the dives were closed by **orphan finalization** on the next app launch, i.e. the service **process died 15–65 s after the wrist left the water** — at 10:08:24 and again at 15:46:17. Ev does not recall closing the app. The recording was intact. Cause: unknown until SERVICE HISTORY (v0.9.1+) is read after the next dive.
+- Dive 1 duration 24:15 was inflated by the surface float; the first surface touch was at 23:03 (now the rule).
+- Safety stop, dive 1: armed at 4:42, band entered ~16:13, countdown **DONE at 19:40**, two more minutes at ~4.1 m. The stop-complete buzz should have fired at 19:40.
+- Ascent-rate alerts would have fired: dive 1 at 13:01, 13:36–13:43, 13:57, 15:21 (11–15 m/min); dive 2 at 33:52–34:01 (16.7 m/min) and at the exit. **Ev: were these buzzes felt?** (item "alerts felt when expected").
+- Lowest NDL 8.5 min at 28.2 m (dive 1). Temperature column empty (known issue).
+
 ### Next-dive checklist for the 2026-09-27 fixes (unverified in water)
+
+- [ ] After surfacing, leave the watch alone for two minutes, then check SERVICE HISTORY for the dive end and any process exit.
+- [ ] Dive record shows battery start→end, safety-stop result, max ascent rate, CNS at end, app version and an exit position (entry position too if the watch had a recent fix).
 
 - [ ] Before the dive, open **Sensor probe → SERVICE HISTORY**: "Remembered surface" shows a value a few minutes old.
 - [ ] Open the app on the boat, leave it, gear up for > 20 min: it must still be running at water entry (notification says "Watching for a dive · auto-off HH:MM").

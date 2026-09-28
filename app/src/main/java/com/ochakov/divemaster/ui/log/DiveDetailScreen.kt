@@ -51,9 +51,31 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.roundToInt
 
 private val DETAIL_DATE_FMT = DateTimeFormatter.ofPattern("d MMM yyyy · HH:mm")
+
+private fun stopResultText(name: String): String = when (name) {
+    "DONE" -> "done"
+    "INCOMPLETE" -> "incomplete"
+    "NOT_REQUIRED" -> "not required"
+    else -> name.lowercase()
+}
+
+/** Exit fix preferred; the entry position is a last-known one and says so. */
+private fun positionText(dive: DiveEntity): String? {
+    fun fmt(lat: Double, lon: Double, acc: Double?, suffix: String) =
+        String.format(Locale.US, "%.5f, %.5f", lat, lon) +
+            (acc?.takeIf { it >= 0 }?.let { String.format(Locale.US, " (±%.0f m)", it) } ?: "") + suffix
+    val exitLat = dive.exitLat
+    val exitLon = dive.exitLon
+    if (exitLat != null && exitLon != null) return fmt(exitLat, exitLon, dive.exitAccuracyM, "")
+    val entryLat = dive.entryLat
+    val entryLon = dive.entryLon
+    if (entryLat != null && entryLon != null) return fmt(entryLat, entryLon, dive.entryAccuracyM, " (entry)")
+    return null
+}
 
 @Composable
 fun DiveDetailScreen(diveId: Long, onDeleted: () -> Unit) {
@@ -120,6 +142,13 @@ fun DiveDetailScreen(diveId: Long, onDeleted: () -> Unit) {
                     "GF" to "${currentDive.gfLow}/${currentDive.gfHigh}",
                     "Water" to currentDive.waterType,
                     "Surface" to "%.0f mbar".format(currentDive.surfacePressureMbar),
+                    ("Battery" to "${currentDive.batteryStartPct?.let { "$it%" } ?: "?"} → ${currentDive.batteryEndPct?.let { "$it%" } ?: "?"}")
+                        .takeIf { currentDive.batteryStartPct != null || currentDive.batteryEndPct != null },
+                    currentDive.safetyStopResult?.let { "Safety stop" to stopResultText(it) },
+                    currentDive.maxAscentRateMPerMin?.let { "Max ascent" to Units.rate(it, metric) },
+                    currentDive.cnsEndFraction?.let { "CNS at end" to "%.0f%%".format(it * 100) },
+                    positionText(currentDive)?.let { "Position" to it },
+                    currentDive.appVersion?.let { "App" to it },
                 )
                 items(rows.size) { i ->
                     val (label, value) = rows[i]
