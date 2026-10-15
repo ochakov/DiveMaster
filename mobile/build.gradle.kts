@@ -11,6 +11,24 @@ plugins {
 val baseVersionCode = providers.gradleProperty("divemaster.versionCode").get().toInt()
 val releaseVersionName = providers.gradleProperty("divemaster.versionName").get()
 
+// Guard against the mistake of 2026-10-15: without the keystore environment a
+// "release" build is silently debug-signed, and Google Play rejects it. Fail
+// release packaging unless a local check build explicitly asks for it.
+val hasReleaseKeystore = System.getenv("DIVEMASTER_KEYSTORE_FILE")?.isNotBlank() == true
+val allowDebugSignedRelease = providers.gradleProperty("divemaster.allowDebugRelease").orNull == "true"
+gradle.taskGraph.whenReady {
+    val packagesRelease = allTasks.any {
+        it.project == project && it.name.matches(Regex("(assemble|bundle|package)Release"))
+    }
+    if (packagesRelease && !hasReleaseKeystore && !allowDebugSignedRelease) {
+        throw GradleException(
+            "${project.path}: release packaging without DIVEMASTER_KEYSTORE_* in the environment would " +
+                "produce a DEBUG-signed artifact that Google Play rejects. Use the release workflow (push a " +
+                "v* tag), set the keystore env, or pass -Pdivemaster.allowDebugRelease=true for a local check.",
+        )
+    }
+}
+
 android {
     namespace = "com.ochakov.divemaster.mobile"
     compileSdk = 36
@@ -49,7 +67,6 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            val hasReleaseKeystore = System.getenv("DIVEMASTER_KEYSTORE_FILE")?.isNotBlank() == true
             signingConfig = if (hasReleaseKeystore) {
                 signingConfigs.getByName("release")
             } else {
