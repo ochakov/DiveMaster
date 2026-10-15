@@ -1,19 +1,28 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
+// Release identity shared with :mobile (gradle.properties). Google Play needs
+// a distinct versionCode per artifact of one app, so the watch bundle sits
+// 10000 above the phone's.
+val baseVersionCode = providers.gradleProperty("divemaster.versionCode").get().toInt()
+val releaseVersionName = providers.gradleProperty("divemaster.versionName").get()
+
 android {
     namespace = "com.ochakov.divemaster"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.ochakov.divemaster"
         minSdk = 30
-        targetSdk = 34
-        versionCode = 5
-        versionName = "0.9.2"
+        // Google Play's Wear OS floor (since 2026-08-31) is Android 15.
+        targetSdk = 35
+        versionCode = 10_000 + baseVersionCode
+        versionName = releaseVersionName
     }
 
     buildFeatures {
@@ -52,9 +61,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+}
 
-    kotlinOptions {
-        jvmTarget = "17"
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 

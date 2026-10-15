@@ -7,6 +7,15 @@
     <uses-feature
         android:name="android.hardware.sensor.barometer"
         android:required="true" />
+    <!-- Position is a nice-to-have: without it dives simply record unpositioned.
+         Declared optional so Play doesn't infer a hard requirement from the
+         location permission and hide the app from watches without own GPS. -->
+    <uses-feature
+        android:name="android.hardware.location"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.location.gps"
+        android:required="false" />
 
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />

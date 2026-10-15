@@ -1,6 +1,7 @@
 name: Release
 
-# Builds both APKs (watch + phone) and attaches them to a GitHub Release
+# Builds both APKs (watch + phone, for sideloading) and both Android App
+# Bundles (.aab, for Google Play) and attaches them to a GitHub Release
 # whenever a v* tag is pushed. Manual runs (workflow_dispatch) build and
 # upload the APKs as a workflow artifact without creating a release.
 #
@@ -59,18 +60,21 @@ jobs:
       - name: Run unit tests
         run: ./gradlew :core:deco:test :core:engine:test :core:data:testDebugUnitTest
 
-      - name: Build watch and phone release APKs
+      - name: Build watch and phone release APKs and Play bundles
         env:
           DIVEMASTER_KEYSTORE_PASSWORD: ${{ secrets.DIVEMASTER_KEYSTORE_PASSWORD }}
           DIVEMASTER_KEY_ALIAS: ${{ secrets.DIVEMASTER_KEY_ALIAS }}
           DIVEMASTER_KEY_PASSWORD: ${{ secrets.DIVEMASTER_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease :mobile:assembleRelease
+        run: ./gradlew :app:assembleRelease :mobile:assembleRelease :app:bundleRelease :mobile:bundleRelease
 
       - name: Collect APKs
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/DiveMaster-watch-${GITHUB_REF_NAME}.apk"
           cp mobile/build/outputs/apk/release/mobile-release.apk "dist/DiveMaster-phone-${GITHUB_REF_NAME}.apk"
+          # Google Play uploads: App Bundles, signed with the same (upload) key.
+          cp app/build/outputs/bundle/release/app-release.aab "dist/DiveMaster-watch-${GITHUB_REF_NAME}.aab"
+          cp mobile/build/outputs/bundle/release/mobile-release.aab "dist/DiveMaster-phone-${GITHUB_REF_NAME}.aab"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
