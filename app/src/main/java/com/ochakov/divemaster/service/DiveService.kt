@@ -20,6 +20,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.util.Log
 import android.os.Vibrator
@@ -41,6 +42,7 @@ import com.ochakov.divemaster.engine.DiveEngineConfig
 import com.ochakov.divemaster.engine.DivePhase
 import com.ochakov.divemaster.engine.EngineEvent
 import com.ochakov.divemaster.engine.PressureSample
+import com.ochakov.divemaster.engine.SensorClock
 import com.ochakov.divemaster.engine.SensorPipeline
 import com.ochakov.divemaster.engine.SimulatorProfile
 import com.ochakov.divemaster.engine.SurfaceMemory
@@ -82,6 +84,15 @@ class DiveService : Service() {
         data class SettingsChanged(val settings: DiveSettings) : Input
     }
 
+    /** Barometer stalls seen since the service started (probe: POWER & SAMPLING). */
+    data class StallStats(
+        val count: Int = 0,
+        val totalSec: Long = 0,
+        val longestSec: Long = 0,
+        /** The full diagnostic line of the most recent stall. */
+        val last: String? = null,
+    )
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val inputs = Channel<Input>(Channel.UNLIMITED)
     private val pipeline = SensorPipeline()
@@ -92,6 +103,14 @@ class DiveService : Service() {
     private var surfaceMemoryStore: SurfaceMemoryStore? = null
     private var sensorManager: SensorManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private val powerMonitor by lazy { PowerStateMonitor(this) { powerEvents.value = it } }
+
+    // Raw barometer stream bookkeeping. Written on the sensor thread only; the
+    // volatile counters are read by the stall reporter ~1.5 s after a resume.
+    private var lastRawEventWallMs = 0L
+    @Volatile private var lastRawArrivalWallMs = 0L
+    @Volatile private var burstEvents = 0
+    @Volatile private var burstMaxAgeMs = 0L
     private var simJob: Job? = null
     private var alertSounder: AlertSounder? = null
     private var diveModeActive = false
@@ -132,11 +151,30 @@ class DiveService : Service() {
     private val pressureListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             if (simulatorRunning.value) return // the simulator owns the stream
-            if (System.currentTimeMillis() - lastNativeDepthWallMs < NATIVE_DEPTH_FRESH_MS) {
+            val nowWall = System.currentTimeMillis()
+            if (nowWall - lastNativeDepthWallMs < NATIVE_DEPTH_FRESH_MS) {
                 return // Samsung's dedicated depth sensor owns the stream
             }
+            // Stall bookkeeping on *arrival* time: a gap here means the CPU or
+            // the sensor was asleep, whatever the readings' own clock says.
+            val previousArrival = lastRawArrivalWallMs
+            lastRawArrivalWallMs = nowWall
+            if (previousArrival != 0L && nowWall - previousArrival > SENSOR_STALE_MS) {
+                onSensorStreamResumed(nowWall - previousArrival, nowWall)
+            }
+            val nowElapsedNs = SystemClock.elapsedRealtimeNanos()
+            val ageMs = SensorClock.eventAgeMs(nowElapsedNs, event.timestamp)
+            burstEvents++
+            if (ageMs > burstMaxAgeMs) burstMaxAgeMs = ageMs
+            // Bucket by the time the reading was *measured*: a backlog the sensor
+            // hub held while the CPU slept then spreads over its real seconds
+            // instead of collapsing into one impossible sample (dive 10,
+            // 2026-10-16: 19.5 m followed by 15.6 m "one second" later). Never
+            // step backwards, so the 1 s buckets stay monotonic.
+            val eventWall = maxOf(SensorClock.eventWallMs(nowWall, nowElapsedNs, event.timestamp), lastRawEventWallMs)
+            lastRawEventWallMs = eventWall
             val bar = event.values[0].toDouble() * DepthConverter.BAR_PER_HPA
-            val sample = pipeline.onRaw(System.currentTimeMillis(), bar) ?: return
+            val sample = pipeline.onRaw(eventWall, bar) ?: return
             inputs.trySend(Input.Sample(sample.copy(tempC = currentTempC())))
         }
 
@@ -171,6 +209,7 @@ class DiveService : Service() {
         // watch that sleeps its screen on water contact would otherwise suspend
         // the CPU and stop barometer sampling before a dive is ever detected.
         acquireMonitorWakeLock()
+        powerMonitor.start()
         val dao = DiveMasterDatabase.get(this).diveDao()
         scope.launch {
             val repository = SettingsRepository(this@DiveService)
@@ -412,6 +451,7 @@ class DiveService : Service() {
                 val stale = diving && lastSampleWallMs > 0 && now - lastSampleWallMs > SENSOR_STALE_MS
                 if (stale && !sensorStale.value) warnBuzz(longArrayOf(0, 500, 200, 500))
                 sensorStale.value = stale
+                powerSummary.value = powerSnapshot()
                 if (now - lastBatteryPollMs >= 30_000) {
                     lastBatteryPollMs = now
                     val pct = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
@@ -492,6 +532,8 @@ class DiveService : Service() {
         samsungSource?.stop()
         samsungSource = null
         location.cancel()
+        powerMonitor.stop()
+        powerSummary.value = null
         nativeDepthDriving.value = false
         simJob?.cancel()
         val eng = engine
@@ -547,6 +589,62 @@ class DiveService : Service() {
         val pct = (getSystemService(Context.BATTERY_SERVICE) as BatteryManager)
             .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         return if (pct in 1..100) pct else null
+    }
+
+    /**
+     * The barometer went quiet for [gapMs] and has just spoken again. The
+     * stall is reported once the resumed burst has had a moment to arrive, so
+     * the line can say how many readings came at once and how old the oldest
+     * was (a backlog the sensor hub flushed) — next to what the OS did to the
+     * device's power state meanwhile. The 2026-10-16 dives recorded 1 % and
+     * 21 % of their samples and left no trace of why; this line is the trace.
+     */
+    private fun onSensorStreamResumed(gapMs: Long, resumedWallMs: Long) {
+        burstEvents = 0
+        burstMaxAgeMs = 0
+        val phase = engine?.displayState?.phase
+        scope.launch {
+            delay(STALL_REPORT_DELAY_MS)
+            val readings = burstEvents
+            val oldestMs = burstMaxAgeMs
+            val meanwhile = powerMonitor.between(resumedWallMs - gapMs - 2_000, resumedWallMs + 500)
+            val line = buildString {
+                append("SENSOR STALL %d s".format(gapMs / 1000))
+                append(if (phase == DivePhase.DIVING) " MID-DIVE" else " on the surface")
+                append(" · resumed with $readings readings in %.1f s".format(STALL_REPORT_DELAY_MS / 1000.0))
+                if (oldestMs >= 2_000) append(", oldest %d s old (hub backlog)".format(oldestMs / 1000))
+                append(" · ").append(powerSnapshot())
+                if (meanwhile.isNotEmpty()) append(" · meanwhile: ").append(meanwhile.joinToString("; "))
+            }
+            Log.w(TAG, line)
+            LifecycleLog.append(this@DiveService, line)
+            val gapSec = gapMs / 1000
+            sensorStalls.value = sensorStalls.value.let {
+                it.copy(
+                    count = it.count + 1,
+                    totalSec = it.totalSec + gapSec,
+                    longestSec = maxOf(it.longestSec, gapSec),
+                    last = line,
+                )
+            }
+        }
+    }
+
+    /** Wake lock, foreground status and the OS power policy, in one line. */
+    private fun powerSnapshot(): String = buildString {
+        append(if (wakeLock?.isHeld == true) "wake lock held" else "WAKE LOCK NOT HELD")
+        append(" · fgs ").append(fgsTypeLabel(foregroundServiceType))
+        append(" · ").append(powerMonitor.policySummary())
+        append(" · app ").append(if (activityVisible) "visible" else "hidden")
+    }
+
+    private fun fgsTypeLabel(types: Int): String {
+        if (types == ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE) return "NONE (not a foreground service!)"
+        val names = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= 34 && (types and ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) != 0) names += "specialUse"
+        if ((types and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) != 0) names += "location"
+        if (names.isEmpty()) names += "0x%x".format(types)
+        return names.joinToString("|")
     }
 
     /**
@@ -778,6 +876,7 @@ class DiveService : Service() {
         private const val WAKELOCK_REFRESH_MS = 60_000L
         private const val MONITOR_IDLE_STOP_MS = 3L * 60 * 60 * 1000
         private const val SENSOR_STALE_MS = 5_000L
+        private const val STALL_REPORT_DELAY_MS = 1_500L
         private const val LOW_BATTERY_PCT = 15
         private const val NATIVE_DEPTH_FRESH_MS = 3_000L
         private const val WATER_TEMP_FRESH_MS = 60_000L
@@ -796,6 +895,15 @@ class DiveService : Service() {
         val serviceRunning = MutableStateFlow(false)
         val sensorStale = MutableStateFlow(false)
         val batteryPct = MutableStateFlow<Int?>(null)
+
+        /** Wake lock / foreground / Doze / battery-optimization state, refreshed every 2 s while the service runs. */
+        val powerSummary = MutableStateFlow<String?>(null)
+
+        /** Recent screen and Doze transitions, newest first (PowerStateMonitor). */
+        val powerEvents = MutableStateFlow<List<String>>(emptyList())
+
+        /** Barometer stalls (> 5 s without a reading) since the service started. */
+        val sensorStalls = MutableStateFlow(StallStats())
 
         /** Samsung private depth sensor readable on this install. */
         val nativeDepthAvailable = MutableStateFlow(false)

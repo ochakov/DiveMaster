@@ -15,7 +15,7 @@ import java.time.format.DateTimeFormatter
  */
 object LifecycleLog {
     private const val FILE = "lifecycle.log"
-    private const val MAX_LINES = 40
+    private const val MAX_LINES = 80
     private val FMT = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss")
 
     @Synchronized

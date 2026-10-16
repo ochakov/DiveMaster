@@ -73,6 +73,31 @@ behavior vs the certified computer's? Alerts felt when expected?
 - Ascent-rate alerts would have fired: dive 1 at 13:01, 13:36–13:43, 13:57, 15:21 (11–15 m/min); dive 2 at 33:52–34:01 (16.7 m/min) and at the exit. **Ev: were these buzzes felt?** (item "alerts felt when expected").
 - Lowest NDL 8.5 min at 28.2 m (dive 1). Temperature column empty (known issue).
 
+### Dives 10 and 12 (2026-10-16, v0.9.3): most samples never reached the app
+
+| # | Date | DiveMaster (max / avg / time / lowest NDL) | Samples | Notes |
+|---|---|---|---|---|
+| 10 | 2026-10-16 09:59 | 19.5 m / 16.4 m / 34:38 / 34 min (**invalid**) | **30 of 2079 s (1 %)** | bursts 0–7 s, 18–25 s, 763–775 s, one sample at 2078 s; first sample already at 9.14 m (the descent fell in a gap); 19.54 m followed by 15.61 m "one second" later |
+| 12 | 2026-10-16 15:37 | 10.1 m / 3.7 m / 41:04 / 219 min | **511 of 2465 s (21 %)** | continuous 0–477 s at 0–6 m, then bursts 690–704 s and 1993–2013 s, one sample at 2464 s; 4.97 m followed by 9.47 m |
+
+What the CSVs prove (Ev's phone exports; analysis 2026-10-16):
+
+- **The engine never saw the missing seconds.** Its time-weighted average depth, recomputed from the recorded samples alone with the engine's own rules (60 s gap cap, depth ≥ 0.3 m), is 16.414 m and 3.706 m — the records say 16.41 and 3.71. Storage and sync are intact; the barometer stream itself reached the service only in bursts.
+- **Each gap ended with a flushed backlog.** The first sample after a gap is physically inconsistent with the next one (4 m in a second): the sensor hub had queued readings while the CPU slept and delivered them together, and the service's arrival-time stamping folded them into one median. Fixed: readings are now bucketed by their hardware timestamp (`SensorClock`), so a flushed backlog lands in its real seconds.
+- **The bursts look like button glances** (8–21 s each), i.e. nothing was sampled while the screen was off — although the service held its PARTIAL_WAKE_LOCK, and this exact setup sampled at 1 Hz for 24 + 38 min headless on 2026-09-25 (v0.9.0). The service process did not die (one continuous dive record each time).
+- **Deco impact.** The engine caps a gap at 60 s of tissue loading at the post-gap depth, so dive 10's 12-min stretch at ~19 m counted as one minute: the 34 min "lowest NDL" is optimistic by roughly the missing time. Neither dive can be used for NDL comparison (certified-computer NDL figures should still be noted here for later).
+- What changed between the good dives and these: watch `targetSdk` 34 → 35 (Google Play's Wear OS floor), the app was installed fresh (per-app battery setting likely back to "Optimized"), and possibly a watch firmware update. Nothing in the app's sensor or wake-lock code changed. Samsung's own guidance for sensors with the screen off is exactly what the app does (foreground service + wake lock), and its developer forum carries reports of Galaxy Watches restricting third-party foreground services anyway.
+
+#### Next-dive checklist for the sample loss (do these first, no water needed)
+
+- [ ] Watch **Settings › Apps › DiveMaster › Battery**: is it "Unrestricted"? Note the current value, then set Unrestricted.
+- [ ] Watch **Settings › About › Software**: did the watch update since 2026-09-25? Note the One UI Watch / Wear OS version.
+- [ ] How was v0.9.3 installed — Google Play, or the release APK? (A fresh install resets per-app battery settings.)
+- [ ] **Table test:** open the app (arms monitoring), press the side button so the screen sleeps, leave the watch on a table for 10 min, open **Sensor probe → POWER & SAMPLING**: "Sensor stalls this session" must say *none*. If it lists a stall, the stall line says whether the wake lock was held, whether the service was still a foreground service, whether Doze was on and whether the app is battery-optimization exempt — paste it here.
+- [ ] Same test with Battery = Unrestricted, if the first run stalled.
+- [ ] Probe → POWER & SAMPLING → "Barometer": note wake-up/non-wake-up, FIFO size and whether a wake-up variant exists (decides whether the wake-up-sensor option is available).
+- [ ] After the next real dive: detail screen shows **100 %** coverage; SERVICE HISTORY has no `SENSOR STALL` lines. Any stall line: copy it here verbatim.
+
 ### Next-dive checklist for the 2026-09-27 fixes (unverified in water)
 
 - [ ] After surfacing, leave the watch alone for two minutes, then check SERVICE HISTORY for the dive end and any process exit.

@@ -6,6 +6,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.PowerManager
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -64,6 +65,9 @@ fun ProbeScreen() {
     var vendorTempNames by remember { mutableStateOf(listOf<String>()) }
     val vendorTemps = remember { mutableStateMapOf<String, Float>() }
     var allSensors by remember { mutableStateOf(listOf<String>()) }
+    // Can the barometer survive a sleeping CPU? Wake-up variant, hardware FIFO.
+    var baroCapabilities by remember { mutableStateOf("") }
+    var batteryOptimizationExempt by remember { mutableStateOf<Boolean?>(null) }
     var nativeDepthAvailable by remember { mutableStateOf(false) }
     var nativeDepthM by remember { mutableStateOf<Double?>(null) }
     var nativeWaterTempC by remember { mutableStateOf<Double?>(null) }
@@ -82,6 +86,10 @@ fun ProbeScreen() {
     val exitHistory by DiveService.processExitHistory.collectAsState()
     val rememberedSurface by DiveService.rememberedSurface.collectAsState()
     val lifecycleLog = remember { LifecycleLog.read(context) }
+    // Why did the barometer stream stop? (2026-10-16: dives with 1 % / 21 % of their samples.)
+    val powerSummary by DiveService.powerSummary.collectAsState()
+    val powerEvents by DiveService.powerEvents.collectAsState()
+    val sensorStalls by DiveService.sensorStalls.collectAsState()
 
     DisposableEffect(Unit) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -90,6 +98,27 @@ fun ProbeScreen() {
 
         val pressure = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
         pressureSensor = pressure
+        val wakeUpPressure = runCatching { sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE, true) }.getOrNull()
+        baroCapabilities = if (pressure == null) {
+            ""
+        } else {
+            buildString {
+                append(if (pressure.isWakeUpSensor) "wake-up sensor" else "non-wake-up sensor")
+                append(" · FIFO ${pressure.fifoMaxEventCount} events (${pressure.fifoReservedEventCount} reserved)")
+                append(" · wake-up variant: ")
+                append(
+                    when {
+                        wakeUpPressure == null -> "none"
+                        wakeUpPressure.isWakeUpSensor && wakeUpPressure.name != pressure.name ->
+                            "YES — t${wakeUpPressure.type}, FIFO ${wakeUpPressure.fifoMaxEventCount}"
+                        wakeUpPressure.isWakeUpSensor -> "this one"
+                        else -> "none"
+                    },
+                )
+            }
+        }
+        batteryOptimizationExempt = (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .isIgnoringBatteryOptimizations(context.packageName)
         var refCount = 0
         var refSum = 0f
         var lastTimestampNs = 0L
@@ -434,6 +463,82 @@ fun ProbeScreen() {
                     Text(
                         "$name: ${vendorTemps[name]?.let { "%.1f °C".format(it) } ?: "—"}",
                         style = MaterialTheme.typography.caption2,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+
+            item { Spacer(Modifier.height(8.dp)) }
+            item { Text("POWER & SAMPLING", style = MaterialTheme.typography.caption2, color = MaterialTheme.colors.secondary) }
+            item {
+                Text(
+                    powerSummary ?: "Service not running — open the surface screen to arm it",
+                    fontSize = 9.sp,
+                    color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                )
+            }
+            item {
+                val exempt = batteryOptimizationExempt
+                Text(
+                    when (exempt) {
+                        null -> "Battery optimization: unknown"
+                        true -> "Battery optimization: exempt (unrestricted)"
+                        false -> "Battery optimization: NOT exempt — Doze may ignore the wake lock. " +
+                            "Settings › Apps › DiveMaster › Battery › Unrestricted"
+                    },
+                    fontSize = 10.sp,
+                    color = if (exempt == true) DiveGreen else DiveAmber,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            if (baroCapabilities.isNotEmpty()) {
+                item {
+                    Text(
+                        "Barometer: $baroCapabilities",
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+            item {
+                val stalls = sensorStalls
+                Text(
+                    if (stalls.count == 0) {
+                        "Sensor stalls this session: none"
+                    } else {
+                        "Sensor stalls this session: %d · total %d:%02d · longest %d:%02d".format(
+                            stalls.count,
+                            stalls.totalSec / 60,
+                            stalls.totalSec % 60,
+                            stalls.longestSec / 60,
+                            stalls.longestSec % 60,
+                        )
+                    },
+                    fontSize = 10.sp,
+                    color = if (stalls.count == 0) DiveGreen else DiveRed,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            val lastStall = sensorStalls.last
+            if (lastStall != null) {
+                item { Text(lastStall, fontSize = 9.sp, color = DiveAmber, textAlign = TextAlign.Center) }
+            }
+            if (powerEvents.isNotEmpty()) {
+                item {
+                    Text(
+                        "Screen / Doze (newest first):",
+                        style = MaterialTheme.typography.caption2,
+                        color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                items(minOf(8, powerEvents.size)) { i ->
+                    Text(
+                        powerEvents[i],
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colors.onBackground.copy(alpha = 0.6f),
                         textAlign = TextAlign.Center,
                     )
                 }

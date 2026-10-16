@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.ochakov.divemaster.data.db.DiveEntity
 import com.ochakov.divemaster.data.db.DiveMasterDatabase
 import com.ochakov.divemaster.data.db.SampleEntity
+import com.ochakov.divemaster.data.stats.SampleCoverage
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -104,6 +105,9 @@ fun DiveDetailScreen(diveId: Long, metric: Boolean) {
 
         val o2 = (currentDive.gasO2Fraction * 100).roundToInt()
         val minNdl = samples.mapNotNull { it.ndlMin }.minOrNull()
+        // A complete 1 Hz profile has duration + 1 samples; less means the
+        // sensor stream stalled and the dive's NDL trace is optimistic.
+        val coverage = SampleCoverage.of(samples.map { it.tOffsetSec }, currentDive.durationSec)
         val stats = listOfNotNull(
             ("Late start" to "Began underwater").takeIf { currentDive.startedUnderwater },
             "Duration" to "%d:%02d min".format(currentDive.durationSec / 60, currentDive.durationSec % 60),
@@ -115,7 +119,8 @@ fun DiveDetailScreen(diveId: Long, metric: Boolean) {
             "Lowest NDL" to (minNdl?.let { "${it.roundToInt()} min" } ?: "—"),
             "Water type" to currentDive.waterType,
             "Surface pressure" to "%.0f mbar".format(currentDive.surfacePressureMbar),
-            "Samples" to "${samples.size}",
+            "Samples" to "${samples.size} · ${coverage.percentLabel()}",
+            coverage.longestGapLabel()?.let { "Longest sensor gap" to "$it at ${coverage.longestGapStartLabel()}" },
             ("Battery" to "${currentDive.batteryStartPct?.let { "$it%" } ?: "?"} → ${currentDive.batteryEndPct?.let { "$it%" } ?: "?"}")
                 .takeIf { currentDive.batteryStartPct != null || currentDive.batteryEndPct != null },
             currentDive.safetyStopResult?.let { "Safety stop" to stopResultLabel(it) },

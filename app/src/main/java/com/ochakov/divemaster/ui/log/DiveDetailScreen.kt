@@ -40,6 +40,7 @@ import com.ochakov.divemaster.data.db.SampleEntity
 import com.ochakov.divemaster.data.export.DiveCsv
 import com.ochakov.divemaster.data.settings.DiveSettings
 import com.ochakov.divemaster.data.settings.SettingsRepository
+import com.ochakov.divemaster.data.stats.SampleCoverage
 import com.ochakov.divemaster.service.DiveSyncPublisher
 import com.ochakov.divemaster.ui.Units
 import com.ochakov.divemaster.ui.theme.DiveCyan
@@ -105,6 +106,9 @@ fun DiveDetailScreen(diveId: Long, onDeleted: () -> Unit) {
             if (currentDive == null) {
                 item { Text("Dive not found", style = MaterialTheme.typography.body2) }
             } else {
+                // A thin profile must never pass for a quiet dive: the engine
+                // integrated every missing second blind (2026-10-16).
+                val coverage = SampleCoverage.of(samples.map { it.tOffsetSec }, currentDive.durationSec)
                 item {
                     Text(
                         Instant.ofEpochMilli(currentDive.startEpochMs).atZone(ZoneId.systemDefault())
@@ -125,7 +129,7 @@ fun DiveDetailScreen(diveId: Long, onDeleted: () -> Unit) {
                 }
                 item {
                     Text(
-                        "0–${Units.depthWithUnit(currentDive.maxDepthM, metric)} · ${samples.size} samples",
+                        "0–${Units.depthWithUnit(currentDive.maxDepthM, metric)} · ${samples.size} samples · ${coverage.percentLabel()}",
                         fontSize = 9.sp,
                         color = MaterialTheme.colors.onBackground.copy(alpha = 0.5f),
                     )
@@ -135,6 +139,7 @@ fun DiveDetailScreen(diveId: Long, onDeleted: () -> Unit) {
                 val rows = listOfNotNull(
                     ("Late start" to "began underwater").takeIf { currentDive.startedUnderwater },
                     "Duration" to "%d:%02d".format(currentDive.durationSec / 60, currentDive.durationSec % 60),
+                    coverage.longestGapLabel()?.let { "Sensor gaps" to "${coverage.gapCount} · longest $it" },
                     "Max depth" to Units.depthWithUnit(currentDive.maxDepthM, metric),
                     "Avg depth" to Units.depthWithUnit(currentDive.avgDepthM, metric),
                     "Min temp" to (currentDive.minTempC?.let { Units.temp(it, metric) } ?: "—"),
