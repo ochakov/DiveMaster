@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Build
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import java.time.Instant
@@ -59,11 +58,10 @@ class PowerStateMonitor(
                     "screen off"
                 }
 
+                // Only deep Doze is observable through public APIs (light Doze
+                // is @SystemApi) — and only deep Doze ignores wake locks.
                 PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED ->
                     if (pm.isDeviceIdleMode) "DEEP DOZE on (wake locks ignored)" else "deep doze off"
-
-                PowerManager.ACTION_LIGHT_DEVICE_IDLE_MODE_CHANGED ->
-                    if (Build.VERSION.SDK_INT >= 33 && pm.isLightDeviceIdleMode) "light doze on" else "light doze off"
 
                 PowerManager.ACTION_POWER_SAVE_MODE_CHANGED ->
                     if (pm.isPowerSaveMode) "power saver on" else "power saver off"
@@ -81,7 +79,6 @@ class PowerStateMonitor(
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
             addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
-            if (Build.VERSION.SDK_INT >= 33) addAction(PowerManager.ACTION_LIGHT_DEVICE_IDLE_MODE_CHANGED)
         }
         // System broadcasts reach a non-exported receiver; nothing else needs to.
         ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -129,14 +126,9 @@ class PowerStateMonitor(
     /** One line of the device's current power policy as it applies to this app. */
     fun policySummary(): String {
         val pm = powerManager
-        val doze = when {
-            pm.isDeviceIdleMode -> "DEEP"
-            Build.VERSION.SDK_INT >= 33 && pm.isLightDeviceIdleMode -> "light"
-            else -> "no"
-        }
         return buildString {
             append(screenSummary())
-            append(" · doze ").append(doze)
+            append(" · deep doze ").append(if (pm.isDeviceIdleMode) "ON" else "no")
             if (pm.isPowerSaveMode) append(" · power saver ON")
             append(" · battery optimization ")
             append(if (pm.isIgnoringBatteryOptimizations(context.packageName)) "exempt" else "NOT exempt")
