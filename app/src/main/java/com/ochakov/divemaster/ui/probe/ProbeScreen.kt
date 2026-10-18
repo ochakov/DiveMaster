@@ -70,7 +70,7 @@ fun ProbeScreen() {
     var baroCapabilities by remember { mutableStateOf("") }
     var batteryOptimizationExempt by remember { mutableStateOf<Boolean?>(null) }
     // The 2026-10-16 sample loss: "Allow background activity" off for the app.
-    var backgroundRestricted by remember { mutableStateOf(BackgroundActivityPolicy.isRestricted(context)) }
+    var backgroundSignals by remember { mutableStateOf(BackgroundActivityPolicy.signals(context)) }
     var nativeDepthAvailable by remember { mutableStateOf(false) }
     var nativeDepthM by remember { mutableStateOf<Double?>(null) }
     var nativeWaterTempC by remember { mutableStateOf<Double?>(null) }
@@ -122,7 +122,7 @@ fun ProbeScreen() {
         }
         batteryOptimizationExempt = (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
             .isIgnoringBatteryOptimizations(context.packageName)
-        backgroundRestricted = BackgroundActivityPolicy.isRestricted(context)
+        backgroundSignals = BackgroundActivityPolicy.signals(context)
         var refCount = 0
         var refSum = 0f
         var lastTimestampNs = 0L
@@ -475,15 +475,25 @@ fun ProbeScreen() {
             item { Spacer(Modifier.height(8.dp)) }
             item { Text("POWER & SAMPLING", style = MaterialTheme.typography.caption2, color = MaterialTheme.colors.secondary) }
             item {
+                val signals = backgroundSignals
                 Text(
-                    if (backgroundRestricted) {
+                    if (signals.restricted) {
                         "Background activity: OFF — depth readings stop when the screen sleeps. " +
                             "Switch it on: ${BackgroundActivityPolicy.FIX_PATH}"
                     } else {
-                        "Background activity: allowed"
+                        "Background activity: allowed, as far as Android reports"
                     },
                     fontSize = 10.sp,
-                    color = if (backgroundRestricted) DiveRed else DiveGreen,
+                    color = if (signals.restricted) DiveRed else DiveGreen,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            item {
+                // Raw signals: with the Galaxy Wearable switch OFF, this line shows which one it moves.
+                Text(
+                    backgroundSignals.summary(),
+                    fontSize = 9.sp,
+                    color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center,
                 )
             }
@@ -525,12 +535,13 @@ fun ProbeScreen() {
                     if (stalls.count == 0) {
                         "Sensor stalls this session: none"
                     } else {
-                        "Sensor stalls this session: %d · total %d:%02d · longest %d:%02d".format(
+                        "Sensor stalls this session: %d · total %d:%02d · longest %d:%02d · %d ended as the screen came on".format(
                             stalls.count,
                             stalls.totalSec / 60,
                             stalls.totalSec % 60,
                             stalls.longestSec / 60,
                             stalls.longestSec % 60,
+                            stalls.screenOffStalls,
                         )
                     },
                     fontSize = 10.sp,

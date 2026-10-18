@@ -108,7 +108,8 @@ Certified-computer NDL figures for dives 13–15 are still to be noted here.
 
 #### Next-dive checklist (the switch is on; now verify the guards)
 
-- [ ] With the switch deliberately OFF in Galaxy Wearable, open the app: the red "BACKGROUND ACTIVITY IS OFF" screen must appear, the notification must say so, and the probe's POWER & SAMPLING line must be red. Switch it back ON: the screen must disappear on its own within a few seconds.
+- [ ] With the switch deliberately OFF in Galaxy Wearable, open the app (**0.9.4 or later** — check the version stamp at the bottom of Settings; the released 0.9.3 has none of this): the red "BACKGROUND ACTIVITY IS OFF" screen must appear, the notification must say so, and the probe's POWER & SAMPLING line must be red. Switch it back ON: the screen must disappear on its own within a few seconds.
+- [ ] If no gate appears with the switch OFF on 0.9.4: screenshot the probe's POWER & SAMPLING section — its "isBackgroundRestricted=… · standby … · battery optimization …" line says which Android signal Samsung's switch moves (2026-10-18 evening: unclear whether the silent run was 0.9.3 or an invisible switch). Then let the screen sleep for 2 min and open the app again: the surface screen must now show the red "Depth readings stopped while the screen was off" warning from the stall evidence alone.
 - [ ] After the next dive: detail screen shows **100 %**; SERVICE HISTORY has no `SENSOR STALL` lines. Any stall line: copy it here verbatim.
 - [x] Probe → POWER & SAMPLING → "Barometer" (Ev, 2026-10-18): `LPS28DFW6 Pressure Sensor Non-wakeup`, no wake-up variant — a wake-up barometer is not available as a fallback. Same screenshot: the HAL now declares 6060 hPa (≈ 50 m) at 0.001 hPa, so the probe's range verdict is green (it read a nominal ≈ 1013 hPa on 2026-08-31). FIFO size not noted.
 

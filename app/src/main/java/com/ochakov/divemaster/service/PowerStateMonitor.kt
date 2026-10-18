@@ -113,6 +113,11 @@ class PowerStateMonitor(
     }
 
     /** "screen on since 12:27:20" / "screen off since 12:14:58" / "screen on (no change seen)". */
+    /** True when a "screen on" was recorded within [windowMs] before [wallMs] — the stall ended with a glance. */
+    fun screenTurnedOnWithin(wallMs: Long, windowMs: Long): Boolean = synchronized(lock) {
+        transitions.any { it.what == "screen on" && it.wallMs in (wallMs - windowMs)..(wallMs + 500) }
+    }
+
     fun screenSummary(): String {
         val now = powerManager.isInteractive
         val changed = screenChangedWallMs

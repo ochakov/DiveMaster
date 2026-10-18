@@ -89,6 +89,12 @@ class DiveService : Service() {
         val count: Int = 0,
         val totalSec: Long = 0,
         val longestSec: Long = 0,
+        /**
+         * Stalls that ended the moment the screen came on: nothing was sampled
+         * while it was off. That is the symptom of background activity being
+         * switched off, whatever mechanism the watch uses to enforce it.
+         */
+        val screenOffStalls: Int = 0,
         /** The full diagnostic line of the most recent stall. */
         val last: String? = null,
     )
@@ -615,11 +621,13 @@ class DiveService : Service() {
             val readings = burstEvents
             val oldestMs = burstMaxAgeMs
             val meanwhile = powerMonitor.between(resumedWallMs - gapMs - 2_000, resumedWallMs + 500)
+            val afterGlance = powerMonitor.screenTurnedOnWithin(resumedWallMs, 3_000)
             val line = buildString {
                 append("SENSOR STALL %d s".format(gapMs / 1000))
                 append(if (phase == DivePhase.DIVING) " MID-DIVE" else " on the surface")
                 append(" · resumed with $readings readings in %.1f s".format(STALL_REPORT_DELAY_MS / 1000.0))
                 if (oldestMs >= 2_000) append(", oldest %d s old (hub backlog)".format(oldestMs / 1000))
+                if (afterGlance) append(" · resumed as the screen came on: nothing sampled while it was off (background activity off?)")
                 append(" · ").append(powerSnapshot())
                 if (meanwhile.isNotEmpty()) append(" · meanwhile: ").append(meanwhile.joinToString("; "))
             }
@@ -631,9 +639,11 @@ class DiveService : Service() {
                     count = it.count + 1,
                     totalSec = it.totalSec + gapSec,
                     longestSec = maxOf(it.longestSec, gapSec),
+                    screenOffStalls = it.screenOffStalls + (if (afterGlance) 1 else 0),
                     last = line,
                 )
             }
+            if (afterGlance) notify(currentStatusText())
         }
     }
 
@@ -831,6 +841,8 @@ class DiveService : Service() {
             simulatorRunning.value -> "Simulated dive running"
             state?.startCheckActive == true -> "Checking whether underwater…"
             restricted -> "Background activity is OFF — recording stops when the screen sleeps. Fix: Galaxy Wearable › Apps › DiveMaster › Battery"
+            sensorStalls.value.screenOffStalls > 0 ->
+                "Depth readings stopped while the screen was off (${sensorStalls.value.screenOffStalls}×) — check Galaxy Wearable › Apps › DiveMaster › Battery"
             else -> {
                 val until = Instant.ofEpochMilli(lastForegroundWallMs + MONITOR_IDLE_STOP_MS)
                     .atZone(ZoneId.systemDefault())

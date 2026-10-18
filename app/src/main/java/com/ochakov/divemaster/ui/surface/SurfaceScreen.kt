@@ -68,6 +68,7 @@ fun SurfaceScreen(
     val engineState by DiveService.displayState.collectAsState()
     val simRunning by DiveService.simulatorRunning.collectAsState()
     val battery by DiveService.batteryPct.collectAsState()
+    val stalls by DiveService.sensorStalls.collectAsState()
     val diving = engineState?.phase == DivePhase.DIVING
 
     val lastDive by viewModel.lastDive.collectAsState(initial = null)
@@ -196,11 +197,16 @@ fun SurfaceScreen(
                 }
             }
             item { Spacer(Modifier.height(6.dp)) }
-            if (backgroundRestricted) {
+            if (backgroundRestricted || stalls.screenOffStalls > 0) {
                 item {
                     Text(
-                        "⚠ BACKGROUND ACTIVITY IS OFF — the dive will stop recording when the screen sleeps. " +
-                            "Switch it on: ${BackgroundActivityPolicy.FIX_PATH}.",
+                        if (backgroundRestricted) {
+                            "⚠ BACKGROUND ACTIVITY IS OFF — the dive will stop recording when the screen sleeps. " +
+                                "Switch it on: ${BackgroundActivityPolicy.FIX_PATH}."
+                        } else {
+                            "⚠ Depth readings stopped while the screen was off (${stalls.screenOffStalls}×) — a dive would record " +
+                                "only your glances. Switch on: ${BackgroundActivityPolicy.FIX_PATH}."
+                        },
                         style = MaterialTheme.typography.caption2,
                         color = DiveRed,
                         textAlign = TextAlign.Center,

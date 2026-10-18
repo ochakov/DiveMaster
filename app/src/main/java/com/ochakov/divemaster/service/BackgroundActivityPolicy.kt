@@ -1,9 +1,11 @@
 package com.ochakov.divemaster.service
 
 import android.app.ActivityManager
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.PowerManager
 import android.provider.Settings
 
 /**
@@ -16,23 +18,66 @@ import android.provider.Settings
  * touching water. With the switch off, Ev's dives of 2026-10-16 reached the
  * app with 1 % and 21 % of their samples, in bursts that coincided with
  * button glances; with it on, the three dives of 2026-10-17 recorded every
- * second. A fresh install (e.g. from Google Play) can leave the switch off.
+ * second. A fresh install (e.g. from Google Play) leaves the switch off.
  *
- * Android exposes the state ([ActivityManager.isBackgroundRestricted]) but
- * no way to request the permission, so the app detects it, blocks the surface
- * screen until it is fixed (with a way through for a diver who knows), shows
- * it in the ongoing notification and the probe, and logs it with every arm.
+ * Android has no API to request the permission, only to read restrictions —
+ * and which of its public signals Samsung's switch moves is not documented,
+ * so [signals] reads all three and the probe prints them raw. Policy aside,
+ * the service also recognises the *symptom* (a stall that ends the moment
+ * the screen comes on, see `DiveService.StallStats.screenOffStalls`) and
+ * warns on that evidence alone.
  */
 object BackgroundActivityPolicy {
 
-    /** True when the user (or a fresh install) has background activity switched off for this app. */
-    fun isRestricted(context: Context): Boolean = runCatching {
-        (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).isBackgroundRestricted
-    }.getOrDefault(false)
+    /** The public signals that can carry a per-app background restriction. */
+    data class Signals(
+        /** AOSP background restriction: App info › Battery › "Restricted" / "Allow background usage" off. */
+        val backgroundRestricted: Boolean,
+        /** App Standby bucket; RESTRICTED is the user-imposed one. */
+        val standbyBucket: Int,
+        /** Doze allow-list ("Unrestricted"). Not a restriction by itself — most apps are "Optimized". */
+        val batteryOptimizationExempt: Boolean,
+    ) {
+        val restricted: Boolean
+            get() = backgroundRestricted || standbyBucket >= UsageStatsManager.STANDBY_BUCKET_RESTRICTED
 
-    /** One-line state for logs and the probe. */
-    fun label(context: Context): String =
-        if (isRestricted(context)) "background activity RESTRICTED" else "background activity allowed"
+        fun bucketName(): String = when (standbyBucket) {
+            UsageStatsManager.STANDBY_BUCKET_ACTIVE -> "ACTIVE"
+            UsageStatsManager.STANDBY_BUCKET_WORKING_SET -> "WORKING_SET"
+            UsageStatsManager.STANDBY_BUCKET_FREQUENT -> "FREQUENT"
+            UsageStatsManager.STANDBY_BUCKET_RARE -> "RARE"
+            UsageStatsManager.STANDBY_BUCKET_RESTRICTED -> "RESTRICTED"
+            else -> "bucket $standbyBucket"
+        }
+
+        /** Raw values for the probe and the stall line: a screenshot with the switch off tells which one it moves. */
+        fun summary(): String =
+            "isBackgroundRestricted=$backgroundRestricted · standby ${bucketName()} · " +
+                "battery optimization ${if (batteryOptimizationExempt) "exempt" else "not exempt"}"
+    }
+
+    fun signals(context: Context): Signals = Signals(
+        backgroundRestricted = runCatching {
+            (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).isBackgroundRestricted
+        }.getOrDefault(false),
+        standbyBucket = runCatching {
+            (context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager).appStandbyBucket
+        }.getOrDefault(UsageStatsManager.STANDBY_BUCKET_ACTIVE),
+        batteryOptimizationExempt = runCatching {
+            (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
+                .isIgnoringBatteryOptimizations(context.packageName)
+        }.getOrDefault(false),
+    )
+
+    /** True when any public signal says background activity is switched off for this app. */
+    fun isRestricted(context: Context): Boolean = signals(context).restricted
+
+    /** One line for logs and the probe, raw signals included. */
+    fun label(context: Context): String {
+        val s = signals(context)
+        return (if (s.restricted) "background activity RESTRICTED" else "background activity allowed") +
+            " (" + s.summary() + ")"
+    }
 
     /** Where the switch lives, in the user's words. */
     const val FIX_PATH =
