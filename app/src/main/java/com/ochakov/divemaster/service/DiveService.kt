@@ -516,7 +516,14 @@ class DiveService : Service() {
                 Log.i(TAG, "Monitoring armed; wakeLock held=${wakeLock?.isHeld == true}")
                 if (now - lastArmLogMs >= ARM_LOG_THROTTLE_MS) { // button glances would flood the log
                     lastArmLogMs = now
-                    LifecycleLog.append(this, "armed (app opened)")
+                    LifecycleLog.append(
+                        this,
+                        if (BackgroundActivityPolicy.isRestricted(this)) {
+                            "armed (app opened) · BACKGROUND ACTIVITY RESTRICTED — sampling will stop when the screen sleeps"
+                        } else {
+                            "armed (app opened)"
+                        },
+                    )
                 }
             }
         }
@@ -814,12 +821,16 @@ class DiveService : Service() {
     /** What the ongoing notification should say right now. */
     private fun currentStatusText(): String {
         val state = engine?.displayState
+        // The one setting the recording cannot survive without (BackgroundActivityPolicy).
+        val restricted = BackgroundActivityPolicy.isRestricted(this)
         return when {
             state?.phase == DivePhase.DIVING ->
-                if (state.startedUnderwater) "Dive in progress · LATE START" else "Dive in progress"
+                (if (state.startedUnderwater) "Dive in progress · LATE START" else "Dive in progress") +
+                    (if (restricted) " · BACKGROUND ACTIVITY OFF" else "")
 
             simulatorRunning.value -> "Simulated dive running"
             state?.startCheckActive == true -> "Checking whether underwater…"
+            restricted -> "Background activity is OFF — recording stops when the screen sleeps. Fix: Galaxy Wearable › Apps › DiveMaster › Battery"
             else -> {
                 val until = Instant.ofEpochMilli(lastForegroundWallMs + MONITOR_IDLE_STOP_MS)
                     .atZone(ZoneId.systemDefault())

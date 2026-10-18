@@ -35,9 +35,11 @@ import com.ochakov.divemaster.data.db.DiveMasterDatabase
 import com.ochakov.divemaster.data.settings.DiveSettings
 import com.ochakov.divemaster.data.settings.SettingsRepository
 import com.ochakov.divemaster.engine.DivePhase
+import com.ochakov.divemaster.service.BackgroundActivityPolicy
 import com.ochakov.divemaster.service.DiveService
 import com.ochakov.divemaster.ui.Units
 import com.ochakov.divemaster.ui.theme.DiveAmber
+import com.ochakov.divemaster.ui.theme.DiveRed
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDateTime
@@ -74,6 +76,15 @@ fun SurfaceScreen(
         while (true) {
             now = LocalDateTime.now()
             delay(1000L - System.currentTimeMillis() % 1000L)
+        }
+    }
+    // Only reachable with the switch off via "Continue anyway" on the start-up
+    // gate — keep saying it on the surface screen, where the diver gears up.
+    var backgroundRestricted by remember { mutableStateOf(BackgroundActivityPolicy.isRestricted(context)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(5_000)
+            backgroundRestricted = BackgroundActivityPolicy.isRestricted(context)
         }
     }
 
@@ -185,6 +196,18 @@ fun SurfaceScreen(
                 }
             }
             item { Spacer(Modifier.height(6.dp)) }
+            if (backgroundRestricted) {
+                item {
+                    Text(
+                        "⚠ BACKGROUND ACTIVITY IS OFF — the dive will stop recording when the screen sleeps. " +
+                            "Switch it on: ${BackgroundActivityPolicy.FIX_PATH}.",
+                        style = MaterialTheme.typography.caption2,
+                        color = DiveRed,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
             if (!diving) {
                 item {
                     Text(

@@ -88,7 +88,31 @@ What the CSVs prove (Ev's phone exports; analysis 2026-10-16):
 - **Deco impact.** The engine caps a gap at 60 s of tissue loading at the post-gap depth, so dive 10's 12-min stretch at ~19 m counted as one minute: the 34 min "lowest NDL" is optimistic by roughly the missing time. Neither dive can be used for NDL comparison (certified-computer NDL figures should still be noted here for later).
 - What changed between the good dives and these: watch `targetSdk` 34 → 35 (Google Play's Wear OS floor), the app was installed fresh (per-app battery setting likely back to "Optimized"), and possibly a watch firmware update. Nothing in the app's sensor or wake-lock code changed. Samsung's own guidance for sensors with the screen off is exactly what the app does (foreground service + wake lock), and its developer forum carries reports of Galaxy Watches restricting third-party foreground services anyway.
 
-#### Next-dive checklist for the sample loss (do these first, no water needed)
+**Resolved (Ev, 2026-10-17).** The fresh install had the watch's per-app
+switch **"Allow background activity"** OFF for DiveMaster. On the Galaxy
+Watch the switch is only reachable from the phone: Galaxy Wearable › Watch
+settings › Apps › DiveMaster › Battery. With it ON, the next three dives
+recorded every second:
+
+| # | Date | DiveMaster (max / avg / time / lowest NDL) | Samples | Notes |
+|---|---|---|---|---|
+| 13 | 2026-10-17 09:54 | 23.1 m / 15.3 m / 30:14 / 8 min | **1815 of 1815 s (100 %)** | background activity ON; no gaps |
+| 14 | 2026-10-17 12:30 | 20.5 m / 5.7 m / 45:19 / 25 min | **2720 of 2720 s (100 %)** | background activity ON; no gaps |
+| 15 | 2026-10-17 13:58 | 7.3 m / 3.8 m / 37:15 / 1313 min | **2236 of 2236 s (100 %)** | background activity ON; no gaps |
+
+Android has no API to request the switch, only to read it
+(`ActivityManager.isBackgroundRestricted()`), so the app now blocks its
+surface screen at every start while the switch is off, says so in the
+ongoing notification and the probe, and the README lists it as a must-have.
+Certified-computer NDL figures for dives 13–15 are still to be noted here.
+
+#### Next-dive checklist (the switch is on; now verify the guards)
+
+- [ ] With the switch deliberately OFF in Galaxy Wearable, open the app: the red "BACKGROUND ACTIVITY IS OFF" screen must appear, the notification must say so, and the probe's POWER & SAMPLING line must be red. Switch it back ON: the screen must disappear on its own within a few seconds.
+- [ ] After the next dive: detail screen shows **100 %**; SERVICE HISTORY has no `SENSOR STALL` lines. Any stall line: copy it here verbatim.
+- [ ] Probe → POWER & SAMPLING → "Barometer": note wake-up/non-wake-up and FIFO size (for the record).
+
+#### Original checklist (superseded by the resolution above)
 
 - [ ] Watch **Settings › Apps › DiveMaster › Battery**: is it "Unrestricted"? Note the current value, then set Unrestricted.
 - [ ] Watch **Settings › About › Software**: did the watch update since 2026-09-25? Note the One UI Watch / Wear OS version.

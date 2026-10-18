@@ -59,6 +59,29 @@ counter. (The Ultra's dedicated *water-temperature* type is absent on the
 Ultra 2; temperature comes from Samsung's skin-temperature sensors instead,
 which are body-biased and slow to track water.)
 
+## Required watch setting: allow background activity
+
+**DiveMaster cannot record a dive unless the watch allows it to run in the
+background.** Underwater the screen sleeps within seconds of the watch
+touching water, and with background activity switched off the OS stops
+delivering pressure readings to the app at that moment — the dive is then
+recorded only during the seconds you spend looking at the watch (a 35-minute
+dive came back with 30 of 2079 samples that way). With the switch on, every
+second is recorded.
+
+On a Galaxy Watch the switch is **not** on the watch itself. On the phone:
+
+> **Galaxy Wearable › Watch settings › Apps › DiveMaster › Battery › Allow
+> background activity** — switch it **on**.
+
+A fresh install (for example from Google Play) can leave it off, so check it
+after every (re)install. The app checks the setting every time it opens and
+blocks the surface screen with these instructions until it is on; the
+ongoing notification, the Sensor probe (**POWER & SAMPLING**) and the
+service log (**SERVICE HISTORY**) also say when it is off. Each dive's detail
+screen shows how much of its profile was recorded ("Samples · 100%"); less
+than 100 % means readings were lost and the dive's NDL trace is optimistic.
+
 ## Features
 
 - Bühlmann ZH-L16C (1b) decompression model with Erik Baker gradient factors,

@@ -127,7 +127,8 @@ class PowerStateMonitor(
     fun policySummary(): String {
         val pm = powerManager
         return buildString {
-            append(screenSummary())
+            append(BackgroundActivityPolicy.label(context))
+            append(" · ").append(screenSummary())
             append(" · deep doze ").append(if (pm.isDeviceIdleMode) "ON" else "no")
             if (pm.isPowerSaveMode) append(" · power saver ON")
             append(" · battery optimization ")

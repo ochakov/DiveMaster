@@ -11,11 +11,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.ochakov.divemaster.data.settings.SettingsRepository
 import com.ochakov.divemaster.engine.DivePhase
+import com.ochakov.divemaster.ui.BackgroundRestrictedScreen
 import com.ochakov.divemaster.ui.DisclaimerScreen
+import com.ochakov.divemaster.service.BackgroundActivityPolicy
+import kotlinx.coroutines.delay
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
@@ -85,9 +90,32 @@ class MainActivity : ComponentActivity() {
 fun DiveMasterRoot() {
     val context = LocalContext.current
     val settings by remember { SettingsRepository(context) }.settings.collectAsState(initial = null)
+
+    // The watch's per-app "Allow background activity" switch decides whether a
+    // dive records at all once the screen sleeps (2026-10-16: 1 % of the
+    // samples with it off). Android offers no way to request it, only to read
+    // it, so block the app with instructions until it is on — re-checked every
+    // few seconds so the screen clears itself the moment the user flips the
+    // switch on the phone. A dive in progress always gets through to its screen.
+    var backgroundRestricted by remember { mutableStateOf(BackgroundActivityPolicy.isRestricted(context)) }
+    var restrictionAcknowledged by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(3_000)
+            backgroundRestricted = BackgroundActivityPolicy.isRestricted(context)
+        }
+    }
+    val engineState by DiveService.displayState.collectAsState()
+    val diving = engineState?.phase == DivePhase.DIVING
+
     when (val current = settings) {
         null -> Unit // brief blank while DataStore loads
-        else -> if (current.disclaimerAccepted) DiveMasterNavHost() else DisclaimerScreen()
+        else -> when {
+            !current.disclaimerAccepted -> DisclaimerScreen()
+            backgroundRestricted && !restrictionAcknowledged && !diving ->
+                BackgroundRestrictedScreen(onContinueAnyway = { restrictionAcknowledged = true })
+            else -> DiveMasterNavHost()
+        }
     }
 }
 

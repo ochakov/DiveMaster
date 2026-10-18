@@ -33,6 +33,7 @@ import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
+import com.ochakov.divemaster.service.BackgroundActivityPolicy
 import com.ochakov.divemaster.service.DiveService
 import com.ochakov.divemaster.service.LifecycleLog
 import com.ochakov.divemaster.service.SamsungDepthSource
@@ -68,6 +69,8 @@ fun ProbeScreen() {
     // Can the barometer survive a sleeping CPU? Wake-up variant, hardware FIFO.
     var baroCapabilities by remember { mutableStateOf("") }
     var batteryOptimizationExempt by remember { mutableStateOf<Boolean?>(null) }
+    // The 2026-10-16 sample loss: "Allow background activity" off for the app.
+    var backgroundRestricted by remember { mutableStateOf(BackgroundActivityPolicy.isRestricted(context)) }
     var nativeDepthAvailable by remember { mutableStateOf(false) }
     var nativeDepthM by remember { mutableStateOf<Double?>(null) }
     var nativeWaterTempC by remember { mutableStateOf<Double?>(null) }
@@ -119,6 +122,7 @@ fun ProbeScreen() {
         }
         batteryOptimizationExempt = (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
             .isIgnoringBatteryOptimizations(context.packageName)
+        backgroundRestricted = BackgroundActivityPolicy.isRestricted(context)
         var refCount = 0
         var refSum = 0f
         var lastTimestampNs = 0L
@@ -470,6 +474,19 @@ fun ProbeScreen() {
 
             item { Spacer(Modifier.height(8.dp)) }
             item { Text("POWER & SAMPLING", style = MaterialTheme.typography.caption2, color = MaterialTheme.colors.secondary) }
+            item {
+                Text(
+                    if (backgroundRestricted) {
+                        "Background activity: OFF — depth readings stop when the screen sleeps. " +
+                            "Switch it on: ${BackgroundActivityPolicy.FIX_PATH}"
+                    } else {
+                        "Background activity: allowed"
+                    },
+                    fontSize = 10.sp,
+                    color = if (backgroundRestricted) DiveRed else DiveGreen,
+                    textAlign = TextAlign.Center,
+                )
+            }
             item {
                 Text(
                     powerSummary ?: "Service not running — open the surface screen to arm it",
